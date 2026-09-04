@@ -51,6 +51,8 @@ const FEATURES: FeatureCardProps[] = [
   },
 ];
 
+const API_URL = 'http://192.168.100.116:3000';
+
 function formatLocalPhone(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 7);
 
@@ -126,28 +128,54 @@ export default function LoginWebScreen() {
     return Object.keys(newErrors).length === 0;
   }
 
-  function handleLogin() {
-    if (!validateForm()) {
+  async function handleLogin() {
+  if (!validateForm()) {
+    return;
+  }
+
+  setSubmitting(true);
+
+  try {
+    const localDigits = phone.replace(/\D/g, '');
+
+    const fullPhone = `+1${areaCode}${localDigits}`;
+
+    const response = await fetch(`${API_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        phone: fullPhone,
+        password,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      Alert.alert(
+        'Error',
+        data.message || 'No se pudo iniciar sesión.'
+      );
       return;
     }
 
-    const localDigits = phone.replace(/\D/g, '');
+    console.log('Usuario:', data.user);
+    console.log('Token:', data.token);
 
-    const loginData = {
-      phone: `+1${areaCode}${localDigits}`,
-      password,
-      rememberSession,
-    };
+    router.replace('/home');
+  } catch (error) {
+    console.error('Error de login:', error);
 
-    console.log('Datos preparados para el backend:', loginData);
-
-    setSubmitting(true);
-
-    // Acceso temporal mientras se desarrolla POST /api/auth/login.
-    setTimeout(() => {
-      router.replace('/home');
-    }, 600);
+    Alert.alert(
+      'Error de conexión',
+      'No se pudo conectar con el servidor.'
+    );
+  } finally {
+    setSubmitting(false);
   }
+}
 
   function handleForgotPassword() {
     Alert.alert(
