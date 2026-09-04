@@ -13,7 +13,7 @@ export default function HomeScreen() {
           contentContainerStyle={styles.content}>
           <ThemedView style={styles.heroSection}>
             <ThemedText type="title" style={styles.title}>
-              Surtió
+              Surtío
             </ThemedText>
 
             <ThemedText style={styles.subtitle}>
