@@ -32,13 +32,14 @@ function formatPhone(value: string) {
 
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
+const API_URL = 'http://192.168.100.116:3000';
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<LoginErrors>({});
-
+  const [loading, setLoading] = useState(false);
   function validateForm() {
     const newErrors: LoginErrors = {};
     const phoneDigits = phone.replace(/\D/g, '');
@@ -57,14 +58,52 @@ export default function LoginScreen() {
     return Object.keys(newErrors).length === 0;
   }
 
-  function handleLogin() {
-    if (!validateForm()) {
+async function handleLogin() {
+  if (!validateForm()) {
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const phoneDigits = phone.replace(/\D/g, '');
+
+    const response = await fetch(`${API_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        phone: phoneDigits,
+        password,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      Alert.alert(
+        'Error',
+        data.message || 'No se pudo iniciar sesión.'
+      );
       return;
     }
 
-    // Acceso temporal mientras se desarrolla el backend.
+    console.log('Usuario:', data.user);
+    console.log('Token:', data.token);
+
     router.replace('/home');
+  } catch (error) {
+    console.error('Error de login:', error);
+
+    Alert.alert(
+      'Error de conexión',
+      'No se pudo conectar con el servidor.'
+    );
+  } finally {
+    setLoading(false);
   }
+}
 
   function handleForgotPassword() {
     Alert.alert(
@@ -186,14 +225,15 @@ export default function LoginScreen() {
             <Pressable
               accessibilityRole="button"
               onPress={handleLogin}
+              disabled={loading}
               style={({ pressed }) => [
                 styles.loginButton,
                 pressed ? styles.loginButtonPressed : undefined,
               ]}
             >
               <Text style={styles.loginButtonText}>
-                Iniciar sesión
-              </Text>
+  {loading ? 'Iniciando sesión...' : 'Iniciar sesión'}
+</Text>
             </Pressable>
           </View>
 
