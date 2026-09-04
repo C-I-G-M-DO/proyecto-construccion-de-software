@@ -1,26 +1,11 @@
-import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
-import { useColorScheme } from 'react-native';
+import { Stack } from 'expo-router';
 
-import { Colors } from '@/constants/theme';
-
-export default function AppTabs() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
-
+export default function RootLayout() {
   return (
-    <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
-      <NativeTabs.Trigger name="index">
-        <Label>Inicio</Label>
-        <Icon src={require('@/assets/images/tabIcons/home.png')} />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="explore">
-        <Label>Explorar</Label>
-       <Icon src={require('@/assets/images/tabIcons/explore.png')} />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="login" />
+      <Stack.Screen name="(tabs)" />
+    </Stack>
   );
 }
