@@ -1,14 +1,14 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    useWindowDimensions,
-    View,
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
 } from 'react-native';
 
 import { colors, styles } from '@/styles/login.styles.web';
@@ -51,7 +51,11 @@ const FEATURES: FeatureCardProps[] = [
   },
 ];
 
-const API_URL = 'http://192.168.100.116:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+if (!API_URL) {
+  throw new Error('Falta EXPO_PUBLIC_API_URL en el archivo .env');
+}
 
 function formatLocalPhone(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 7);

@@ -1,26 +1,28 @@
-import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
-import { useColorScheme } from 'react-native';
-
-import { Colors } from '@/constants/theme';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
 export default function AppTabs() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
-
   return (
-    <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
-      
+    <NativeTabs>
       <NativeTabs.Trigger name="home">
-        <Label>Inicio</Label>
-        <Icon src={require('@/assets/images/tabIcons/home.png')} />
+        <NativeTabs.Trigger.Label>
+          Inicio
+        </NativeTabs.Trigger.Label>
+
+        <NativeTabs.Trigger.Icon
+          sf="house.fill"
+          md="home"
+        />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="explore">
-        <Label>Explorar</Label>
-        <Icon src={require('@/assets/images/tabIcons/explore.png')} />
+        <NativeTabs.Trigger.Label>
+          Explorar
+        </NativeTabs.Trigger.Label>
+
+        <NativeTabs.Trigger.Icon
+          sf="safari.fill"
+          md="explore"
+        />
       </NativeTabs.Trigger>
     </NativeTabs>
   );

@@ -2,14 +2,14 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 
 import { styles } from '@/styles/login.styles';
@@ -32,7 +32,11 @@ function formatPhone(value: string) {
 
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
-const API_URL = 'http://192.168.100.116:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+if (!API_URL) {
+  throw new Error('Falta EXPO_PUBLIC_API_URL en el archivo .env');
+}
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState('');
