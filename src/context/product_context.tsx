@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { createContext, useContext, useState } from "react";
-import { Producto } from "../types/products";
+import { Precio, Producto } from "../types/products";
 
 type ProductContextType = {
   productos: Producto[];
@@ -13,7 +13,9 @@ type ProductContextType = {
     cantidad: number,
     tipo: "unidad" | "libra" | "paquete",
     equivalencia?: number,
-  ) => void;
+  ) => Promise<void>;
+  eliminarProducto: (productoId: string) => Promise<void>;
+  actualizarPrecios: (productoId: string, precios: Precio[]) => Promise<void>;
 };
 
 export const ProductContext = createContext<ProductContextType | undefined>(
@@ -28,7 +30,7 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
   if (!API_URL) {
-    throw new Error('Falta EXPO_PUBLIC_API_URL en el archivo .env');
+    throw new Error("Falta EXPO_PUBLIC_API_URL en el archivo .env");
   }
 
   //  FETCH CON AUTH AUTOMÁTICO
@@ -98,43 +100,133 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  //  REPONER STOCK (LOCAL)
-  const reponerStock = (
+  const eliminarProducto = async (productoId: string) => {
+    try {
+      const res = await fetchWithAuth(`${API_URL}/api/products/${productoId}`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.log("Error eliminando producto:", data);
+
+        throw new Error(data?.message || "No se pudo eliminar el producto");
+      }
+
+      // Eliminarlo también del estado local
+      setProductos((prev) =>
+        prev.filter((producto) => producto._id !== productoId),
+      );
+    } catch (error) {
+      console.log("Error eliminando producto:", error);
+      throw error;
+    }
+  };
+
+  //Actualizar precio
+
+  const actualizarPrecios = async (productoId: string, precios: Precio[]) => {
+    try {
+      const preciosLimpios = precios.map((precio) => ({
+        tipo: precio.tipo,
+        valor: Number(precio.valor),
+        ...(precio.equivalencia !== undefined
+          ? {
+              equivalencia: Number(precio.equivalencia),
+            }
+          : {}),
+      }));
+
+      const res = await fetchWithAuth(
+        `${API_URL}/api/products/${productoId}/precios`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            precios: preciosLimpios,
+          }),
+        },
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.log("Error actualizando precios:", data);
+
+        throw new Error(
+          data?.message || "No se pudieron actualizar los precios",
+        );
+      }
+
+      // Actualizar producto local con lo que devolvió MongoDB
+      setProductos((prev) =>
+        prev.map((producto) => (producto._id === productoId ? data : producto)),
+      );
+    } catch (error) {
+      console.log("Error actualizando precios:", error);
+      throw error;
+    }
+  };
+
+  // REPONER STOCK
+  const reponerStock = async (
     productoId: string,
     cantidad: number,
     tipo: "unidad" | "libra" | "paquete",
     equivalencia?: number,
   ) => {
-    setProductos((prev) =>
-      prev.map((producto) => {
-        if (producto._id !== productoId) return producto;
+    try {
+      let cantidadAgregar = cantidad;
 
-        let nuevoStock = producto.stock;
+      // UNIDAD
+      if (tipo === "unidad") {
+        cantidadAgregar = cantidad;
+      }
 
-        if (tipo === "unidad") {
-          nuevoStock += cantidad;
-        }
+      // LIBRA
+      if (tipo === "libra") {
+        cantidadAgregar = cantidad;
+      }
 
-        if (tipo === "paquete") {
-          const precioPaquete = producto.precios?.find(
-            (p) => p.tipo === "paquete",
-          );
+      // PAQUETE
+      if (tipo === "paquete") {
+        const producto = productos.find((item) => item._id === productoId);
 
-          const eq = equivalencia ?? precioPaquete?.equivalencia ?? 1;
+        const precioPaquete = producto?.precios?.find(
+          (p) => p.tipo === "paquete",
+        );
 
-          nuevoStock += cantidad * eq;
-        }
+        const eq = equivalencia ?? precioPaquete?.equivalencia ?? 1;
 
-        if (tipo === "libra") {
-          nuevoStock += cantidad;
-        }
+        cantidadAgregar = cantidad * eq;
+      }
 
-        return {
-          ...producto,
-          stock: nuevoStock,
-        };
-      }),
-    );
+      const res = await fetchWithAuth(
+        `${API_URL}/api/products/${productoId}/stock`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            cantidad: cantidadAgregar,
+          }),
+        },
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.log("Error actualizando stock:", data);
+
+        throw new Error(data?.message || "No se pudo actualizar el stock");
+      }
+
+      // Reemplazar el producto local por el actualizado desde MongoDB
+      setProductos((prev) =>
+        prev.map((producto) => (producto._id === productoId ? data : producto)),
+      );
+    } catch (error) {
+      console.log("Error reponiendo stock:", error);
+      throw error;
+    }
   };
 
   return (
@@ -145,6 +237,8 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         obtenerProductos,
         setProductos,
         reponerStock,
+        eliminarProducto,
+        actualizarPrecios,
       }}
     >
       {children}
