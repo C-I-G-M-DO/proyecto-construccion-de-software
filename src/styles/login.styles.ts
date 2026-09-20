@@ -1,59 +1,69 @@
 import { StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
+  logoDot: { position: 'absolute', width: 7, height: 7, borderRadius: 4, backgroundColor: '#E9B64D', right: 20, top: 20 },
+  brandBadge: { backgroundColor: '#EBEBEB', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 24 },
+  brandBadgeText: { color: '#737373', fontSize: 11, fontWeight: '600', textAlign: 'center', letterSpacing: 0.5 },
+  phoneContainer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#DEDEDE', borderRadius: 14, backgroundColor: '#FAFAFA' },
+  countryCode: { paddingHorizontal: 14, color: '#222222', fontSize: 16, borderRightWidth: 1, borderRightColor: '#DEDEDE' },
+  terminalCard: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E0E0E0', backgroundColor: '#FFFFFF' },
+  terminalIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#F8F2F2', alignItems: 'center', justifyContent: 'center' },
+  terminalTitle: { color: '#222222', fontSize: 12, fontWeight: '700' },
+  terminalText: { color: '#737373', fontSize: 13 },
   screen: {
     flex: 1,
-    backgroundColor: '#F5F7F3',
+    backgroundColor: '#F7F7F7',
   },
 
   content: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
   },
 
   container: {
     width: '100%',
     maxWidth: 440,
     alignSelf: 'center',
-    gap: 32,
+    gap: 24,
   },
 
   brandRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 14,
   },
 
   logo: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 72,
+    height: 72,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#176B3A',
+    backgroundColor: '#C00000',
   },
 
   logoText: {
     color: '#FFFFFF',
-    fontSize: 21,
-    fontWeight: '800',
+    fontSize: 56,
+    lineHeight: 66,
+    fontWeight: '400',
   },
 
   brandName: {
-    color: '#16231B',
+    color: '#222222',
     fontSize: 25,
     fontWeight: '800',
     letterSpacing: -0.5,
   },
 
   introduction: {
+    alignItems: 'center',
     gap: 10,
   },
 
   title: {
-    color: '#16231B',
+    color: '#222222',
     fontSize: 36,
     lineHeight: 42,
     fontWeight: '800',
@@ -62,19 +72,20 @@ export const styles = StyleSheet.create({
 
   subtitle: {
     maxWidth: 380,
-    color: '#5C685F',
+    textAlign: 'center',
+    color: '#737373',
     fontSize: 16,
     lineHeight: 24,
   },
 
   formCard: {
-    gap: 22,
-    padding: 24,
+    gap: 16,
+    padding: 22,
     borderRadius: 24,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E2E8E3',
-    boxShadow: '0 10px 30px rgba(30, 61, 42, 0.08)',
+    borderColor: '#E0E0E0',
+    boxShadow: '0 2px 3px rgba(0, 0, 0, 0.05)',
   },
 
   fieldGroup: {
@@ -88,37 +99,37 @@ export const styles = StyleSheet.create({
   },
 
   label: {
-    color: '#26352B',
+    color: '#737373',
     fontSize: 14,
     fontWeight: '700',
   },
 
   input: {
-    height: 54,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 54,
     paddingHorizontal: 16,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#D6DED8',
-    backgroundColor: '#FAFBFA',
-    color: '#16231B',
+    backgroundColor: '#FAFAFA',
+    color: '#222222',
     fontSize: 16,
   },
 
   passwordContainer: {
-    height: 54,
+    minHeight: 54,
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#D6DED8',
-    backgroundColor: '#FAFBFA',
+    borderColor: '#DEDEDE',
+    backgroundColor: '#FAFAFA',
   },
 
   passwordInput: {
     flex: 1,
-    height: '100%',
+    minHeight: 54,
     paddingHorizontal: 16,
-    color: '#16231B',
+    color: '#222222',
     fontSize: 16,
   },
 
@@ -133,14 +144,14 @@ export const styles = StyleSheet.create({
   },
 
   forgotText: {
-    color: '#176B3A',
-    fontSize: 13,
-    fontWeight: '700',
+    color: '#C00000',
+    fontSize: 14,
+    fontWeight: '500',
   },
 
   showPasswordText: {
     paddingHorizontal: 14,
-    color: '#176B3A',
+    color: '#C00000',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -150,7 +161,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
-    backgroundColor: '#176B3A',
+    backgroundColor: '#C00000',
   },
 
   loginButtonPressed: {
@@ -166,7 +177,7 @@ export const styles = StyleSheet.create({
 
   helpText: {
     paddingHorizontal: 20,
-    color: '#68736B',
+    color: '#737373',
     fontSize: 13,
     lineHeight: 20,
     textAlign: 'center',

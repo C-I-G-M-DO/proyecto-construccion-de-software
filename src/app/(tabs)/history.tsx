@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useSurtioTheme, useSurtioStyles } from '@/hooks/use-surtio-theme';
+import { useCallback, useRef, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  ActivityIndicator,
+  Platform,
   FlatList,
   Text,
   TextInput,
@@ -9,7 +12,6 @@ import {
 } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useThemeColor } from "../../hooks/use-theme-color";
 
 type Venta = {
   _id: string;
@@ -27,6 +29,10 @@ type Venta = {
 };
 
 export default function HistoryScreen() {
+  const theme = useSurtioTheme();
+  const insets = useSafeAreaInsets();
+  const requestRef = useRef<AbortController | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [loading, setLoading] = useState(true);
   const [ventaAbierta, setVentaAbierta] = useState<string | null>(null);
@@ -34,11 +40,11 @@ export default function HistoryScreen() {
   // 🔍 BUSCADOR
   const [search, setSearch] = useState("");
 
-  const background = useThemeColor({}, "background");
-  const text = useThemeColor({}, "text");
-  const card = useThemeColor({}, "card");
-  const border = useThemeColor({}, "border");
-  const primary = useThemeColor({}, "primary");
+  const background = theme.background;
+  const text = theme.text;
+  const card = theme.card;
+  const border = theme.border;
+  const primary = theme.primary;
 
   const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -46,34 +52,38 @@ export default function HistoryScreen() {
     throw new Error('Falta EXPO_PUBLIC_API_URL en el archivo .env');
   };
 
-  useEffect(() => {
-    obtenerVentas();
-  }, []);
-
-  const obtenerVentas = async () => {
+  const obtenerVentas = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setLoading(true);
+    setError(null);
     try {
       const token = await AsyncStorage.getItem("token");
-
-      const res = await fetch(`${API_URL}/sales`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      if (controller.signal.aborted) return;
+      if (!token) throw new Error("Inicia sesión para consultar tus ventas.");
+      const res = await fetch(`${API_URL.replace(/\/$/, '')}/api/sales`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        console.log(data);
-        return;
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message || `No se pudo cargar el historial (HTTP ${res.status}).`);
+      if (!Array.isArray(data)) throw new Error("El servidor devolvió un historial con formato inesperado.");
+      if (!controller.signal.aborted) setVentas(data);
+    } catch (cause) {
+      if (!controller.signal.aborted) {
+        setError(cause instanceof Error ? cause.message : "No se pudo cargar el historial.");
       }
-
-      setVentas(data);
-    } catch (error) {
-      console.log(error);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  };
+  }, [API_URL]);
+
+  useFocusEffect(useCallback(() => {
+    setVentas([]);
+    void obtenerVentas();
+    return () => requestRef.current?.abort();
+  }, [obtenerVentas]));
 
   // 🔍 FILTRAR POR NUMERO DE ORDEN
   const ventasFiltradas = ventas.filter((venta) =>
@@ -105,29 +115,25 @@ export default function HistoryScreen() {
     return `${primero} +${restantes}`;
   };
 
-  if (loading) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: background,
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <ActivityIndicator size="large" color={primary} />
-      </View>
-    );
-  }
-
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: background,
-        padding: 20,
+    <FlatList
+      style={{ flex: 1, backgroundColor: background }}
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={{
+        flexGrow: 1,
+        width: '100%',
+        maxWidth: 1080,
+        alignSelf: 'center',
+        paddingHorizontal: 20,
+        paddingTop: Platform.OS === 'ios' ? 16 : insets.top + 16,
+        paddingBottom: 32,
       }}
-    >
+      keyboardDismissMode="on-drag"
+      keyboardShouldPersistTaps="handled"
+      alwaysBounceVertical
+      refreshing={loading}
+      onRefresh={() => void obtenerVentas()}
+      ListHeaderComponent={<View>
       {/* TITULO */}
       <Text
         style={{
@@ -140,10 +146,21 @@ export default function HistoryScreen() {
         Historial
       </Text>
 
+      <Text style={{ color: theme.secondary, fontSize: 15, lineHeight: 22, marginBottom: 20 }}>Consulta las ventas de tu negocio</Text>
+      {!error && !loading && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
+        <View style={{ flexGrow: 1, flexBasis: 140, backgroundColor: card, borderWidth: 1, borderColor: border, padding: 18, borderRadius: 16, gap: 8 }}>
+          <Text style={{ color: theme.secondary, fontSize: 13 }}>Ventas registradas</Text>
+          <Text style={{ color: text, fontSize: 26, fontWeight: '700' }}>{ventas.length}</Text>
+        </View>
+        <View style={{ flexGrow: 1, flexBasis: 180, backgroundColor: card, borderWidth: 1, borderColor: border, padding: 18, borderRadius: 16, gap: 8 }}>
+          <Text style={{ color: theme.secondary, fontSize: 13 }}>Total registrado</Text>
+          <Text style={{ color: text, fontSize: 26, fontWeight: '700' }}>RD$ {ventas.reduce((sum, sale) => sum + sale.subtotal, 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+        </View>
+      </View>}
       {/* 🔍 BUSCADOR */}
       <TextInput
         placeholder="Buscar orden #..."
-        placeholderTextColor={border}
+        placeholderTextColor="#796763"
         value={search}
         onChangeText={setSearch}
         keyboardType="numeric"
@@ -159,7 +176,13 @@ export default function HistoryScreen() {
         }}
       />
 
-      <FlatList
+      {error && <View style={{ paddingVertical: 16, gap: 12 }}>
+        <Text selectable style={{ color: text }}>{error}</Text>
+        <TouchableOpacity accessibilityRole="button" onPress={() => void obtenerVentas()} style={{ paddingVertical: 12 }}>
+          <Text style={{ color: primary, fontWeight: '700' }}>Reintentar</Text>
+        </TouchableOpacity>
+      </View>}
+      </View>}
         data={ventasFiltradas}
         keyExtractor={(item) => item._id}
         showsVerticalScrollIndicator={false}
@@ -171,7 +194,7 @@ export default function HistoryScreen() {
               marginTop: 40,
             }}
           >
-            No hay ventas
+            {loading ? "Cargando ventas…" : error ? "" : search.trim() ? "No hay órdenes con ese número" : "Todavía no hay ventas"}
           </Text>
         }
         renderItem={({ item }) => {
@@ -194,16 +217,18 @@ export default function HistoryScreen() {
               <View
                 style={{
                   flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 12,
                   justifyContent: "space-between",
                   alignItems: "center",
                 }}
               >
-                <View style={{ flex: 1 }}>
+                <View style={{ flexGrow: 1, flexBasis: 180 }}>
                   {/* 🔥 BLOQUE ORDEN */}
                   <View
                     style={{
                       alignSelf: "flex-start",
-                      backgroundColor: primary,
+                      backgroundColor: theme.tint,
                       paddingHorizontal: 12,
                       paddingVertical: 6,
                       borderRadius: 999,
@@ -212,7 +237,7 @@ export default function HistoryScreen() {
                   >
                     <Text
                       style={{
-                        color: "white",
+                        color: primary,
                         fontWeight: "bold",
                         fontSize: 13,
                         letterSpacing: 0.5,
@@ -253,7 +278,7 @@ export default function HistoryScreen() {
                     fontSize: 20,
                   }}
                 >
-                  RD${item.subtotal}
+                  RD$ {item.subtotal.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </Text>
               </View>
 
@@ -330,7 +355,7 @@ export default function HistoryScreen() {
                         }}
                       >
                         RD$
-                        {prod.cantidad * prod.precio}
+                        {(prod.cantidad * prod.precio).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </Text>
                     </View>
                   ))}
@@ -340,6 +365,5 @@ export default function HistoryScreen() {
           );
         }}
       />
-    </View>
   );
 }

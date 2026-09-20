@@ -1,432 +1,109 @@
-import {
-    Pressable,
-    ScrollView,
-    Text,
-    useWindowDimensions,
-    View,
-    type ViewStyle,
-} from 'react-native';
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { styles } from '@/styles/dashboard-home.styles.web';
 
-
-type MetricCardProps = {
-  title: string;
-  value: string;
-  description: string;
-  icon: string;
-  width: ViewStyle['width'];
-};
-
-type QuickActionProps = {
-  title: string;
-  description: string;
-  icon: string;
-  width: ViewStyle['width'];
-};
-
-const METRICS = [
-  {
-    title: 'Ventas de hoy',
-    value: 'RD$ 0.00',
-    description: 'Sin ventas registradas hoy',
-    icon: '$',
-  },
-  {
-    title: 'Productos registrados',
-    value: '0',
-    description: 'Catálogo vacío actualmente',
-    icon: '□',
-  },
-  {
-    title: 'Productos con stock bajo',
-    value: '0',
-    description: 'Sin alertas de inventario',
-    icon: '△',
-  },
-  {
-    title: 'Fiao pendiente',
-    value: 'RD$ 0.00',
-    description: 'Sin balances deudores registrados',
-    icon: '▤',
-  },
-];
-
-const QUICK_ACTIONS = [
-  {
-    title: 'Registrar venta',
-    description: 'Cobrar productos',
-    icon: '$',
-  },
-  {
-    title: 'Agregar producto',
-    description: 'Cargar inventario',
-    icon: '＋',
-  },
-  {
-    title: 'Crear pedido',
-    description: 'Ordenar mercancía',
-    icon: '▱',
-  },
-  {
-    title: 'Registrar fiao',
-    description: 'Libreta digital',
-    icon: '▤',
-  },
-];
-
-function MetricCard({
-  title,
-  value,
-  description,
-  icon,
-  width,
-}: MetricCardProps) {
-  return (
-    <View style={[styles.metricCard, { width }]}>
-      <View style={styles.metricHeader}>
-        <Text selectable style={styles.metricTitle}>
-          {title}
-        </Text>
-
-        <View style={styles.metricIconContainer}>
-          <Text style={styles.metricIcon}>{icon}</Text>
-        </View>
-      </View>
-
-      <Text selectable style={styles.metricValue}>
-        {value}
-      </Text>
-
-      <Text selectable style={styles.metricDescription}>
-        {description}
-      </Text>
-    </View>
-  );
-}
-
-function QuickAction({
-  title,
-  description,
-  icon,
-  width,
-}: QuickActionProps) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled: true }}
-      disabled
-      style={[styles.quickActionCard, { width }]}
-    >
-      <View style={styles.quickActionIconContainer}>
-        <Text style={styles.quickActionIcon}>{icon}</Text>
-      </View>
-
-      <View style={styles.quickActionInformation}>
-        <Text selectable numberOfLines={1} style={styles.quickActionTitle}>
-          {title}
-        </Text>
-
-        <Text
-          selectable
-          numberOfLines={1}
-          style={styles.quickActionDescription}
-        >
-          {description}
-        </Text>
-      </View>
-
-      <View style={styles.soonBadge}>
-        <Text style={styles.soonText}>Próximamente</Text>
-      </View>
-    </Pressable>
-  );
-}
+type Sale = { _id: string; numeroOrden: number; subtotal: number; createdAt: string };
+type Product = { _id: string; stock: number };
+const currency = (value: number) => `RD$ ${value.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function DashboardHome() {
   const { width } = useWindowDimensions();
+  const narrow = width < 950;
+  const [data, setData] = useState<{ sales: Sale[]; products: Product[]; updated: Date } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  useFocusEffect(useCallback(() => {
+    const controller = new AbortController();
+    setData(null);
+    setError(null);
+    async function load() {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const base = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
+        if (!token) throw new Error('Inicia sesión para consultar los datos de tu negocio.');
+        if (!base) throw new Error('Falta configurar la dirección del backend.');
+        const fetchList = async (route: string) => {
+          const response = await fetch(`${base}/api/${route}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal });
+          const result = await response.json().catch(() => null);
+          if (!response.ok) throw new Error(result?.message || `No se pudo consultar ${route} (HTTP ${response.status}).`);
+          if (!Array.isArray(result)) throw new Error(`Respuesta inesperada al consultar ${route}.`);
+          return result;
+        };
+        const [sales, products] = await Promise.all([fetchList('sales'), fetchList('products')]);
+        if (!controller.signal.aborted) setData({ sales, products, updated: new Date() });
+      } catch (cause) {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'No se pudo cargar el resumen.');
+      }
+    }
+    void load();
+    return () => controller.abort();
+  }, [attempt]));
 
-  const narrow = width < 760;
-  const medium = width < 1250;
+  const today = new Date().toDateString();
+  const todaySales = data?.sales.filter(sale => new Date(sale.createdAt).toDateString() === today) ?? [];
+  const metrics = [
+    { title: 'Ventas de hoy', value: data ? currency(todaySales.reduce((sum, sale) => sum + sale.subtotal, 0)) : '—', note: data ? `${todaySales.length} ventas registradas hoy` : 'Esperando datos', icon: '$' },
+    { title: 'Productos registrados', value: data ? String(data.products.length) : '—', note: 'Productos de tu catálogo', icon: '□' },
+    { title: 'Productos agotados', value: data ? String(data.products.filter(product => product.stock <= 0).length) : '—', note: 'Existencias iguales o menores a cero', icon: '△' },
+    { title: 'Fiao pendiente', value: 'Próximamente', note: 'Cuentas de fiao aún no disponibles', icon: '▤' },
+  ];
 
-  const metricWidth: ViewStyle['width'] = narrow
-    ? '100%'
-    : medium
-      ? '48.5%'
-      : '23.5%';
-
-  const actionWidth: ViewStyle['width'] = narrow
-    ? '100%'
-    : medium
-      ? '48.5%'
-      : '23.5%';
-
-  const date = new Intl.DateTimeFormat('es-DO', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date());
-
-  const formattedDate = date.charAt(0).toUpperCase() + date.slice(1);
-
-  return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      showsVerticalScrollIndicator
-      style={styles.scrollView}
-      contentContainerStyle={[
-        styles.content,
-        narrow && styles.contentNarrow,
-      ]}
-    >
-      <View
-        style={[
-          styles.pageHeader,
-          narrow && styles.pageHeaderNarrow,
-        ]}
-      >
-        <View style={styles.titleArea}>
-          <Text selectable style={styles.pageTitle}>
-            Buenos días
-          </Text>
-
-          <Text selectable style={styles.pageSubtitle}>
-            Aquí tienes un resumen de tu negocio
-          </Text>
-        </View>
-
-        <View
-          style={[
-            styles.headerControls,
-            narrow && styles.headerControlsNarrow,
-          ]}
-        >
-          <View style={styles.dateCard}>
-            <Text style={styles.dateIcon}>□</Text>
-
-            <Text selectable numberOfLines={1} style={styles.dateText}>
-              {formattedDate}
-            </Text>
-          </View>
-
-          <Pressable
-            accessibilityLabel="Ver notificaciones"
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.notificationButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.notificationIcon}>♧</Text>
-            <View style={styles.notificationDot} />
-          </Pressable>
-        </View>
+  return <ScrollView style={styles.scrollView} contentContainerStyle={[styles.content, narrow && styles.contentNarrow]}>
+    <View style={[styles.pageHeader, narrow && styles.pageHeaderNarrow]}>
+      <View style={styles.titleArea}>
+        <Text style={styles.pageTitle}>Tu negocio siempre listo</Text>
+        <Text style={styles.pageSubtitle}>Aquí tienes un resumen de tu negocio</Text>
       </View>
-
-      <View style={styles.headerDivider} />
-
-      <View style={styles.phaseBanner}>
-        <View style={styles.phaseIconContainer}>
-          <Text style={styles.phaseIcon}>›_</Text>
-        </View>
-
-        <View style={styles.phaseInformation}>
-          <Text selectable style={styles.phaseTitle}>
-            Sistema listo para apertura contable
-          </Text>
-
-          <Text selectable style={styles.phaseDescription}>
-            Sprint 0 inicializado sin transacciones previas. La interfaz está
-            preparada para recibir los datos del negocio.
-          </Text>
-        </View>
-
-        <View style={styles.phaseBadge}>
-          <Text style={styles.phaseBadgeText}>FASE 0.1</Text>
-        </View>
+      <View style={styles.dateCard}><Text style={styles.dateText}>{new Date().toLocaleDateString('es-DO', { day: 'numeric', month: 'long', year: 'numeric' })}</Text></View>
+    </View>
+    <View style={styles.headerDivider} />
+    <View style={styles.phaseBanner}>
+      <View style={styles.phaseInformation}>
+        <Text style={styles.phaseTitle}>{error ? 'No pudimos actualizar el resumen' : data ? 'Tu información, en un solo lugar' : 'Cargando tu negocio…'}</Text>
+        <Text selectable style={styles.phaseDescription}>{error ?? 'Consulta tus ventas y productos. Las nuevas herramientas aparecerán aquí cuando estén disponibles.'}</Text>
       </View>
-
-      <View style={styles.metricsGrid}>
-        {METRICS.map((metric) => (
-          <MetricCard
-            key={metric.title}
-            title={metric.title}
-            value={metric.value}
-            description={metric.description}
-            icon={metric.icon}
-            width={metricWidth}
-          />
-        ))}
+      <Pressable onPress={() => setAttempt(value => value + 1)} accessibilityRole="button" style={{ padding: 12 }}><Text style={{ color: '#C00000', fontWeight: '700' }}>{error ? 'Reintentar' : 'Actualizar'}</Text></Pressable>
+    </View>
+    <View style={styles.metricsGrid}>
+      {metrics.map(metric => <View key={metric.title} style={[styles.metricCard, { width: narrow ? '100%' : width < 1400 ? '48%' : '23.5%' }]}>
+        <View style={styles.metricHeader}><Text style={styles.metricTitle}>{metric.title}</Text><View style={styles.metricIconContainer}><Text style={styles.metricIcon}>{metric.icon}</Text></View></View>
+        <Text selectable style={[styles.metricValue, metric.value === 'Próximamente' && { fontSize: 20 }]}>{metric.value}</Text>
+        <Text style={styles.metricDescription}>{metric.note}</Text>
+      </View>)}
+    </View>
+    <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Acciones rápidas</Text><Text style={styles.sectionSubtitle}>Accesos directos a operaciones frecuentes</Text></View>
+    <View style={styles.quickActionsGrid}>
+      {[
+        { title: 'Ver historial', description: 'Consultar ventas', route: '/history' as const, icon: '◷' },
+        { title: 'Agregar producto', description: 'Carga a inventario', route: '/add_product' as const, icon: '＋' },
+        { title: 'Crear pedido', description: 'Orden de entrega', route: null, icon: '▱' },
+        { title: 'Registrar fiao', description: 'Libreta de balance', route: null, icon: '▤' },
+      ].map(action => <Pressable key={action.title} disabled={!action.route} accessibilityRole="button" accessibilityState={{ disabled: !action.route }} onPress={() => action.route && router.push(action.route)} style={[styles.quickActionCard, { width: narrow ? '100%' : '48%', flexWrap: 'wrap' }]}>
+        <View style={styles.quickActionIconContainer}><Text style={styles.quickActionIcon}>{action.icon}</Text></View>
+        <View style={styles.quickActionInformation}><Text style={styles.quickActionTitle}>{action.title}</Text><Text style={styles.quickActionDescription}>{action.description}</Text></View>
+        {!action.route && <View style={styles.soonBadge}><Text style={styles.soonText}>Próximamente</Text></View>}
+      </Pressable>)}
+    </View>
+    <View style={[styles.bottomGrid, narrow && styles.bottomGridNarrow]}>
+      <View style={[styles.activityCard, narrow && styles.fullWidthCard]}>
+        <View style={styles.cardHeading}><Text style={styles.cardTitle}>Actividad reciente</Text><Pressable onPress={() => router.push('/history')} style={{ padding: 10 }}><Text style={{ color: '#C00000' }}>Ver historial →</Text></Pressable></View>
+        <View style={styles.cardDivider} />
+        {data?.sales.slice(0, 5).map(sale => <View key={sale._id} style={{ paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#E5E2E1', gap: 6 }}>
+          <Text style={styles.statusTitle}>Orden #{sale.numeroOrden}</Text><Text style={styles.statusDescription}>{new Date(sale.createdAt).toLocaleString('es-DO')}</Text><Text style={{ color: '#C00000', fontWeight: '700' }}>{currency(sale.subtotal)}</Text>
+        </View>)}
+        {(!data || !data.sales.length) && <View style={styles.emptyActivity}><Text style={styles.emptyTitle}>{error ? 'Datos no disponibles' : !data ? 'Cargando ventas…' : 'Todavía no hay ventas registradas'}</Text><Text style={styles.emptyDescription}>Las ventas de tu negocio aparecerán aquí.</Text></View>}
       </View>
-
-      <View style={styles.sectionHeading}>
-        <Text selectable style={styles.sectionTitle}>
-          Acciones rápidas
-        </Text>
-
-        <Text selectable style={styles.sectionSubtitle}>
-          Accesos directos a operaciones frecuentes
-        </Text>
+      <View style={[styles.statusCard, narrow && styles.fullWidthCard]}>
+        <Text style={styles.cardTitle}>Estado general</Text>
+        <View style={styles.cardDivider} />
+        <Text style={styles.statusTitle}>Consulta al backend</Text><Text style={styles.statusDescription}>{error ? 'No se pudo completar la consulta' : data ? 'Productos y ventas consultados correctamente' : 'Consultando…'}</Text>
+        <View style={styles.statusDivider} />
+        <Text style={styles.statusTitle}>Última actualización</Text><Text style={styles.statusDescription}>{data?.updated.toLocaleTimeString('es-DO') ?? '—'}</Text>
+        <View style={styles.statusDivider} />
+        <Text style={styles.statusTitle}>Próximamente</Text><Text style={styles.statusDescription}>Pedidos, cuentas de fiao, clientes y reportes.</Text>
       </View>
-
-      <View style={styles.quickActionsGrid}>
-        {QUICK_ACTIONS.map((action) => (
-          <QuickAction
-            key={action.title}
-            title={action.title}
-            description={action.description}
-            icon={action.icon}
-            width={actionWidth}
-          />
-        ))}
-      </View>
-
-      <View
-        style={[
-          styles.bottomGrid,
-          narrow && styles.bottomGridNarrow,
-        ]}
-      >
-        <View
-          style={[
-            styles.activityCard,
-            narrow && styles.fullWidthCard,
-          ]}
-        >
-          <View style={styles.cardHeading}>
-            <View style={styles.cardHeadingTitle}>
-              <Text selectable style={styles.cardTitle}>
-                Actividad reciente
-              </Text>
-
-              <View style={styles.eventBadge}>
-                <Text style={styles.eventBadgeText}>0 eventos</Text>
-              </View>
-            </View>
-
-            <Text style={styles.historyText}>Ver historial →</Text>
-          </View>
-
-          <View style={styles.cardDivider} />
-
-          <View style={styles.emptyActivity}>
-            <View style={styles.emptyIconContainer}>
-              <Text style={styles.emptyIcon}>◷</Text>
-            </View>
-
-            <Text selectable style={styles.emptyTitle}>
-              Todavía no hay actividad registrada
-            </Text>
-
-            <Text selectable style={styles.emptyDescription}>
-              Las ventas, pedidos y movimientos aparecerán aquí cuando
-              comiencen las operaciones del negocio.
-            </Text>
-          </View>
-
-          <View style={styles.activityFooter}>
-            <Text selectable style={styles.activityFooterText}>
-              ⌛ Esperando primera operación
-            </Text>
-
-            <Text selectable style={styles.activityFooterText}>
-              Sin actividad reciente
-            </Text>
-          </View>
-        </View>
-
-        <View
-          style={[
-            styles.statusCard,
-            narrow && styles.fullWidthCard,
-          ]}
-        >
-          <Text selectable style={styles.cardTitle}>
-            Estado general
-          </Text>
-
-          <Text selectable style={styles.statusSubtitle}>
-            Diagnóstico de conexión del sistema
-          </Text>
-
-          <View style={styles.cardDivider} />
-
-          <View style={styles.statusRow}>
-            <View style={styles.statusDotGreen} />
-
-            <View style={styles.statusInformation}>
-              <Text selectable style={styles.statusTitle}>
-                Interfaz cargada
-              </Text>
-
-              <Text selectable style={styles.statusDescription}>
-                Panel web funcionando correctamente
-              </Text>
-            </View>
-
-            <View style={styles.successBadge}>
-              <Text style={styles.successBadgeText}>Disponible</Text>
-            </View>
-          </View>
-
-          <View style={styles.statusDivider} />
-
-          <View style={styles.statusRow}>
-            <View style={styles.statusDotPending} />
-
-            <View style={styles.statusInformation}>
-              <Text selectable style={styles.statusTitle}>
-                Integración con API
-              </Text>
-
-              <Text selectable style={styles.statusDescription}>
-                Pendiente de conexión con el backend
-              </Text>
-            </View>
-
-            <View style={styles.pendingBadge}>
-              <Text style={styles.pendingBadgeText}>Pendiente</Text>
-            </View>
-          </View>
-
-          <View style={styles.statusDivider} />
-
-          <View style={styles.statusRow}>
-            <Text style={styles.updateIcon}>↻</Text>
-
-            <View style={styles.statusInformation}>
-              <Text selectable style={styles.statusTitle}>
-                Última actualización
-              </Text>
-
-              <Text selectable style={styles.statusDescription}>
-                Información temporal del frontend
-              </Text>
-            </View>
-
-            <Text selectable style={styles.updateValue}>
-              Ahora
-            </Text>
-          </View>
-
-          <View style={styles.businessCard}>
-            <Text style={styles.businessIcon}>▱</Text>
-
-            <View style={styles.businessInformation}>
-              <Text selectable style={styles.businessTitle}>
-                Negocio sin sincronizar
-              </Text>
-
-              <Text selectable style={styles.businessDescription}>
-                La información comercial se mostrará cuando el backend envíe
-                los datos del usuario autenticado.
-              </Text>
-            </View>
-          </View>
-        </View>
-      </View>
-    </ScrollView>
-  );
+    </View>
+  </ScrollView>;
 }
-

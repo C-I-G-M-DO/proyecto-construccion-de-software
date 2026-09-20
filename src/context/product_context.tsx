@@ -25,7 +25,11 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   //  URL BASE
-  const API_URL = "http://192.168.100.116:3000/api";
+  const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+  if (!API_URL) {
+    throw new Error('Falta EXPO_PUBLIC_API_URL en el archivo .env');
+  }
 
   //  FETCH CON AUTH AUTOMÁTICO
   const fetchWithAuth = async (url: string, options: any = {}) => {
@@ -58,7 +62,7 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   //  OBTENER PRODUCTOS
   const obtenerProductos = async () => {
     try {
-      const res = await fetchWithAuth(`${API_URL}/products`);
+      const res = await fetchWithAuth(`${API_URL}/api/products`);
       const data = await res.json();
 
       if (!res.ok) {

@@ -1,17 +1,20 @@
+import { useSurtioTheme, useSurtioStyles } from '@/hooks/use-surtio-theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, Slot, usePathname } from 'expo-router';
 import {
     Pressable,
     Text,
-    TextInput,
     useWindowDimensions,
     View
 } from 'react-native';
 
-import { styles } from '@/styles/ashboard-layout.styles.web';
+import { styles as baseStyles } from '@/styles/ashboard-layout.styles.web';
 
 const NAVIGATION = [
   { label: 'Inicio', icon: '⌂', route: '/home', enabled: true },
-  { label: 'Ventas', icon: '$', enabled: false },
+  { label: 'Historial', icon: '◷', route: '/history', enabled: true },
+  { label: 'Perfil', icon: '◎', route: '../profile', enabled: true },
+  { label: 'Carrito', icon: '$', route: '/cart', enabled: true },
   { label: 'Inventario', icon: '□', enabled: false },
   { label: 'Pedidos', icon: '▱', enabled: false },
   { label: 'Cuentas de fiao', icon: '▤', enabled: false },
@@ -20,14 +23,11 @@ const NAVIGATION = [
 ] as const;
 
 export default function WebTabsLayout() {
+  const theme = useSurtioTheme();
+  const styles = useSurtioStyles(baseStyles);
   const pathname = usePathname();
   const { width } = useWindowDimensions();
   const compact = width < 950;
-
-  function handleLogout() {
-    // El backend podrá borrar el token aquí posteriormente.
-    router.replace('/login');
-  }
 
   return (
     <View style={styles.screen}>
@@ -56,7 +56,7 @@ export default function WebTabsLayout() {
             {NAVIGATION.map((item) => {
               const active =
                 item.enabled &&
-                (pathname === item.route ||
+                (pathname === item.route.replace('..', '') ||
                   (item.route === '/home' && pathname === '/'));
 
               return (
@@ -106,7 +106,7 @@ export default function WebTabsLayout() {
           <View style={styles.sidebarFooter}>
             <Pressable style={styles.helpButton}>
               <Text style={styles.helpIcon}>?</Text>
-              <Text style={styles.helpText}>Ayuda</Text>
+              <Text style={styles.helpText}>Ayuda · Próximamente</Text>
             </Pressable>
 
             <View style={styles.accountCard}>
@@ -120,15 +120,15 @@ export default function WebTabsLayout() {
               </View>
 
               <Pressable
-                accessibilityLabel="Cerrar sesión"
+                accessibilityLabel="Abrir perfil"
                 accessibilityRole="button"
-                onPress={handleLogout}
+                onPress={() => router.push('../profile')}
                 style={({ pressed }) => [
                   styles.logoutButton,
                   pressed && styles.buttonPressed,
                 ]}
               >
-                <Text style={styles.logoutText}>↪</Text>
+                <Text style={styles.logoutText}>◎</Text>
               </Pressable>
             </View>
           </View>
@@ -136,48 +136,16 @@ export default function WebTabsLayout() {
       )}
 
       <View style={styles.workspace}>
-        <View style={styles.topbar}>
-          {compact && (
-            <View style={styles.compactBrand}>
-              <View style={styles.compactLogo}>
-                <Text style={styles.compactLogoText}>S</Text>
-              </View>
-
-              <Text style={styles.compactBrandText}>Surtío</Text>
-            </View>
-          )}
-
-          <View
-            style={[
-              styles.searchContainer,
-              compact && styles.searchContainerCompact,
-            ]}
-          >
-            <Text style={styles.searchIcon}>⌕</Text>
-
-            <TextInput
-              accessibilityLabel="Buscar"
-              placeholder="Buscar producto, fiao o cliente..."
-              placeholderTextColor="#806F6C"
-              style={styles.searchInput}
-            />
-          </View>
-
-          <View style={styles.topbarActions}>
-            <Pressable style={styles.iconButton}>
-              <Text style={styles.actionIcon}>♧</Text>
-            </Pressable>
-
-            <Pressable style={styles.iconButton}>
-              <Text style={styles.actionIcon}>▥</Text>
-            </Pressable>
-
-            <View style={styles.topbarSeparator} />
-
-            <Pressable style={styles.profileButton}>
-              <Text style={styles.profileIcon}>U</Text>
-            </Pressable>
-          </View>
+        <View style={[styles.topbar, { flexWrap: 'wrap', height: 'auto', minHeight: 64, paddingVertical: 12, gap: 12 }]}>
+          {compact ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontWeight: '700', fontSize: 20 }}>Surtío</Text>
+            <Pressable onPress={() => router.push('/home')} style={{ padding: 10 }}><Text style={{ color: theme.primary }}>Inicio</Text></Pressable>
+            <Pressable onPress={() => router.push('/history')} style={{ padding: 10 }}><Text style={{ color: theme.primary }}>Historial</Text></Pressable>
+            <Pressable onPress={() => router.push('../profile')} style={{ padding: 10 }}><Text>Perfil</Text></Pressable>
+          </View> : <>
+            <Text style={{ color: theme.secondary, flex: 1 }}>Surtío / {pathname === '/history' ? 'Historial de ventas' : 'Inicio'}</Text>
+            <Text style={{ color: theme.secondary, fontSize: 12 }}>Notificaciones y escáner · Próximamente</Text>
+          </>}
         </View>
 
         <View style={styles.routeContainer}>

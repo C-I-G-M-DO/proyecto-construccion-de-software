@@ -1,3 +1,5 @@
+import { useSurtioTheme, useSurtioStyles } from '@/hooks/use-surtio-theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -11,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, styles } from '@/styles/login.styles.web';
+import { colors, styles as baseStyles } from '@/styles/login.styles.web';
 
 type AreaCode = '809' | '829' | '849';
 
@@ -68,6 +70,7 @@ function formatLocalPhone(value: string) {
 }
 
 function BrandLogo() {
+  const styles = useSurtioStyles(baseStyles);
   return (
     <View style={styles.logo}>
       <Text style={styles.logoLetter}>S</Text>
@@ -81,6 +84,7 @@ function FeatureCard({
   title,
   description,
 }: FeatureCardProps) {
+  const styles = useSurtioStyles(baseStyles);
   return (
     <View style={styles.featureCard}>
       <View style={styles.featureIcon}>
@@ -98,6 +102,8 @@ function FeatureCard({
 }
 
 export default function LoginWebScreen() {
+  const theme = useSurtioTheme();
+  const styles = useSurtioStyles(baseStyles);
   const { width } = useWindowDimensions();
 
   const compact = width < 1050;
@@ -165,8 +171,13 @@ export default function LoginWebScreen() {
       return;
     }
 
-    console.log('Usuario:', data.user);
-    console.log('Token:', data.token);
+    if (!data.token) throw new Error('El servidor no devolvió un token.');
+    await AsyncStorage.setItem('token', data.token);
+      await AsyncStorage.removeItem('surtio.user');
+      if (data.user) {
+        const { id, name, phone, businessName } = data.user;
+        await AsyncStorage.setItem('surtio.user', JSON.stringify({ id, name, phone, businessName }));
+      }
 
     router.replace('/home');
   } catch (error) {
