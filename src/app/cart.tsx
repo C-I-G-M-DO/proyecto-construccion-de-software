@@ -1,22 +1,29 @@
+import { useThemeColor } from "@/hooks/use-theme-color";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Alert, FlatList, Text, TouchableOpacity, View } from "react-native";
 
-import { useThemeColor } from "@/hooks/use-theme-color";
 import { useCart } from "../context/cart_context";
 import { useProducts } from "../context/product_context";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 if (!API_URL) {
-  throw new Error('Falta EXPO_PUBLIC_API_URL en el archivo .env');
+  throw new Error("Falta EXPO_PUBLIC_API_URL en el archivo .env");
 }
 
 export default function CartScreen() {
   const router = useRouter();
 
-  const { carrito, eliminarDelCarrito, total, vaciarCarrito } = useCart();
+  const {
+    carrito,
+    agregarAlCarrito,
+    disminuirDelCarrito,
+    eliminarDelCarrito,
+    total,
+    vaciarCarrito,
+  } = useCart();
 
   const { obtenerProductos } = useProducts();
 
@@ -28,7 +35,9 @@ export default function CartScreen() {
   const border = useThemeColor({}, "border");
   const primary = useThemeColor({}, "primary");
 
-  // 🔥 REALIZAR VENTA
+  // ============================================================
+  // REALIZAR VENTA
+  // ============================================================
   const realizarVenta = async () => {
     if (loading) return;
 
@@ -63,6 +72,7 @@ export default function CartScreen() {
       const textResponse = await response.text();
 
       let data: any = {};
+
       try {
         data = textResponse ? JSON.parse(textResponse) : {};
       } catch {
@@ -74,10 +84,10 @@ export default function CartScreen() {
         return;
       }
 
-      //  limpiar carrito
+      // Limpiar carrito
       vaciarCarrito();
 
-      //  actualizar inventario
+      // Actualizar inventario desde MongoDB
       await obtenerProductos();
 
       Alert.alert("Éxito", "Venta realizada");
@@ -85,6 +95,7 @@ export default function CartScreen() {
       router.replace("/history");
     } catch (error) {
       console.log("ERROR VENTA:", error);
+
       Alert.alert("Error", "No se pudo conectar al servidor");
     } finally {
       setLoading(false);
@@ -113,7 +124,9 @@ export default function CartScreen() {
       <FlatList
         data={carrito}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{
+          paddingBottom: 20,
+        }}
         ListEmptyComponent={
           <Text
             style={{
@@ -136,6 +149,7 @@ export default function CartScreen() {
               borderColor: border,
             }}
           >
+            {/* NOMBRE */}
             <Text
               style={{
                 color: text,
@@ -146,30 +160,118 @@ export default function CartScreen() {
               {item.nombre}
             </Text>
 
-            <Text style={{ color: text }}>
-              {item.cantidad} x ${item.precio} ({item.tipo})
+            {/* TIPO Y PRECIO */}
+            <Text
+              style={{
+                color: text,
+                marginTop: 4,
+              }}
+            >
+              ${item.precio} ({item.tipo})
             </Text>
 
+            {/* CONTROLES DE CANTIDAD */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginTop: 12,
+              }}
+            >
+              {/* MENOS */}
+              <TouchableOpacity
+                onPress={() => disminuirDelCarrito(item)}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 10,
+                  backgroundColor: border,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: text,
+                    fontSize: 24,
+                    fontWeight: "bold",
+                  }}
+                >
+                  −
+                </Text>
+              </TouchableOpacity>
+
+              {/* CANTIDAD */}
+              <Text
+                style={{
+                  color: text,
+                  fontSize: 20,
+                  fontWeight: "bold",
+                  marginHorizontal: 20,
+                  minWidth: 30,
+                  textAlign: "center",
+                }}
+              >
+                {item.cantidad}
+              </Text>
+
+              {/* MÁS */}
+              <TouchableOpacity
+                onPress={() => agregarAlCarrito(item)}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 10,
+                  backgroundColor: primary,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#FFFFFF",
+                    fontSize: 24,
+                    fontWeight: "bold",
+                  }}
+                >
+                  +
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* TOTAL DEL ITEM */}
             <Text
               style={{
                 color: text,
                 fontWeight: "bold",
-                marginTop: 5,
+                marginTop: 10,
+                fontSize: 16,
               }}
             >
               Total: ${item.total}
             </Text>
 
+            {/* ELIMINAR */}
             <TouchableOpacity
               onPress={() => eliminarDelCarrito(item.id)}
-              style={{ marginTop: 8 }}
+              style={{
+                marginTop: 8,
+              }}
             >
-              <Text style={{ color: "red" }}>Eliminar</Text>
+              <Text
+                style={{
+                  color: "red",
+                  fontWeight: "600",
+                }}
+              >
+                Eliminar
+              </Text>
             </TouchableOpacity>
           </View>
         )}
       />
 
+      {/* TOTAL GENERAL */}
       <Text
         style={{
           fontSize: 22,
@@ -181,11 +283,12 @@ export default function CartScreen() {
         Total: ${total}
       </Text>
 
+      {/* REALIZAR VENTA */}
       <TouchableOpacity
-        disabled={loading}
+        disabled={loading || carrito.length === 0}
         onPress={realizarVenta}
         style={{
-          backgroundColor: loading ? "#999" : primary,
+          backgroundColor: loading || carrito.length === 0 ? "#999" : primary,
           padding: 16,
           borderRadius: 14,
           marginTop: 20,
