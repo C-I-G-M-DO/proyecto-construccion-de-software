@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { createContext, useContext, useState } from "react";
 import { Precio, Producto } from "../types/products";
+import { consumoEnStock, TipoMedida } from '@/constants/measures';
 
 type ProductContextType = {
   productos: Producto[];
@@ -11,7 +12,7 @@ type ProductContextType = {
   reponerStock: (
     productoId: string,
     cantidad: number,
-    tipo: "unidad" | "libra" | "paquete",
+    tipo: TipoMedida,
     equivalencia?: number,
   ) => Promise<void>;
   eliminarProducto: (productoId: string) => Promise<void>;
@@ -172,34 +173,15 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const reponerStock = async (
     productoId: string,
     cantidad: number,
-    tipo: "unidad" | "libra" | "paquete",
+    tipo: TipoMedida,
     equivalencia?: number,
   ) => {
     try {
-      let cantidadAgregar = cantidad;
-
-      // UNIDAD
-      if (tipo === "unidad") {
-        cantidadAgregar = cantidad;
-      }
-
-      // LIBRA
-      if (tipo === "libra") {
-        cantidadAgregar = cantidad;
-      }
-
-      // PAQUETE
-      if (tipo === "paquete") {
-        const producto = productos.find((item) => item._id === productoId);
-
-        const precioPaquete = producto?.precios?.find(
-          (p) => p.tipo === "paquete",
-        );
-
-        const eq = equivalencia ?? precioPaquete?.equivalencia ?? 1;
-
-        cantidadAgregar = cantidad * eq;
-      }
+      const producto = productos.find(item => item._id === productoId);
+      const precio = producto?.precios?.find(p => p.tipo === tipo);
+      const factor = consumoEnStock(tipo, equivalencia ?? precio?.equivalencia, producto?.unidadStock);
+      if (!Number.isFinite(factor) || factor <= 0) throw new Error('Presentación incompatible con el stock.');
+      const cantidadAgregar = cantidad * factor;
 
       const res = await fetchWithAuth(
         `${API_URL}/api/products/${productoId}/stock`,

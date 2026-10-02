@@ -1,4 +1,5 @@
 import { useSurtioTheme, useSurtioStyles } from '@/hooks/use-surtio-theme';
+import { nombreMedida } from '@/constants/measures';
 import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -344,7 +345,7 @@ export default function HistoryScreen() {
                         }}
                       >
                         {prod.cantidad} x RD$
-                        {prod.precio} ({prod.tipo})
+                        {prod.precio} ({nombreMedida(prod.tipo)})
                       </Text>
 
                       <Text

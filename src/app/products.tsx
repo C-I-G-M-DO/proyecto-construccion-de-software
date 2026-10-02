@@ -21,6 +21,7 @@ import {
 
 import { useCart } from "../context/cart_context";
 import { useProducts } from "../context/product_context";
+import { nombreMedida } from '@/constants/measures';
 
 const SCREEN_PADDING = 16;
 const CARD_GAP = 12;
@@ -328,7 +329,7 @@ export default function HomeScreen() {
                 >
                   <View style={styles.priceHeader}>
                     <Text style={[styles.priceType, { color: text }]}>
-                      {String(precio.tipo).toUpperCase()}
+                      {nombreMedida(precio.tipo).toUpperCase()}
                     </Text>
                     <Text style={[styles.priceValue, { color: text }]}>
                       RD${precio.valor}

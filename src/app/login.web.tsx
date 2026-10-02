@@ -228,18 +228,6 @@ export default function LoginWebScreen() {
               <Text style={styles.headerText}>Portal disponible</Text>
             </View>
 
-            <View style={styles.dividerVertical} />
-
-            <Pressable
-              onPress={() =>
-                Alert.alert(
-                  'Soporte técnico',
-                  'El canal de soporte será configurado próximamente.',
-                )
-              }
-            >
-              <Text style={styles.headerText}>Soporte técnico</Text>
-            </Pressable>
           </View>
         )}
       </View>

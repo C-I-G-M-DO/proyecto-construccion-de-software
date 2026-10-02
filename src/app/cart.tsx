@@ -1,7 +1,7 @@
 import { useThemeColor } from "@/hooks/use-theme-color";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -13,6 +13,8 @@ import {
 
 import { useCart } from "../context/cart_context";
 import { useProducts } from "../context/product_context";
+import { nombreMedida } from '@/constants/measures';
+import { crearOrden } from '@/services/orders';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -42,6 +44,9 @@ export default function CartScreen() {
   const { obtenerProductos } = useProducts();
 
   const [loading, setLoading] = useState(false);
+  const [sendingOrder, setSendingOrder] = useState(false);
+  const orderRequest = useRef<{ fingerprint: string; id: string } | null>(null);
+  const sendingOrderRef = useRef(false);
 
   // Cliente
   const [telefono, setTelefono] = useState("");
@@ -288,6 +293,28 @@ export default function CartScreen() {
    */
   const totalFinal = Math.max(0, total - descuentoAplicado);
 
+  const enviarADespacho = async () => {
+    if (!carrito.length || sendingOrderRef.current || loading) return;
+    if (cliente || canjearPuntos) {
+      Alert.alert('Orden pendiente', 'Por ahora las órdenes para despacho no incluyen clientes ni puntos. Quita el cliente antes de enviarla.');
+      return;
+    }
+    const fingerprint = JSON.stringify(carrito.map(({ productoId, tipo, cantidad }) => ({ productoId, tipo, cantidad })));
+    if (orderRequest.current?.fingerprint !== fingerprint) {
+      orderRequest.current = { fingerprint, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
+    }
+    sendingOrderRef.current = true;
+    setSendingOrder(true);
+    try {
+      await crearOrden(carrito, orderRequest.current.id);
+      vaciarCarrito();
+      orderRequest.current = null;
+      router.replace('/dispatch');
+    } catch (cause) {
+      Alert.alert('No se pudo enviar la orden', cause instanceof Error ? cause.message : 'Inténtalo nuevamente.');
+    } finally { setSendingOrder(false); sendingOrderRef.current = false; }
+  };
+
   /**
    * Realizar venta
    */
@@ -484,7 +511,7 @@ export default function CartScreen() {
                 marginTop: 4,
               }}
             >
-              ${item.precio} ({item.tipo})
+              RD${item.precio} ({nombreMedida(item.tipo)})
             </Text>
 
             <View
@@ -1017,7 +1044,17 @@ export default function CartScreen() {
               {/* ========================= */}
 
               <TouchableOpacity
-                disabled={loading || carrito.length === 0}
+                disabled={loading || sendingOrder || carrito.length === 0}
+                onPress={enviarADespacho}
+                style={{ borderColor: primary, borderWidth: 1, padding: 16, borderRadius: 14, marginTop: 20, alignItems: 'center', opacity: loading || sendingOrder ? 0.6 : 1 }}
+              >
+                <Text style={{ color: primary, fontWeight: 'bold', fontSize: 16 }}>
+                  {sendingOrder ? 'Enviando…' : 'Enviar orden a despacho'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                disabled={loading || sendingOrder || carrito.length === 0}
                 onPress={realizarVenta}
                 style={{
                   backgroundColor:

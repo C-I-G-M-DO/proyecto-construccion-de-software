@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useMemo, useState } from "react";
 import { Alert } from "react-native";
 import { CartItem } from "../types/products";
 import { useProducts } from "./product_context";
+import { consumoEnStock } from '@/constants/measures';
 
 type CartContextType = {
   carrito: CartItem[];
@@ -19,20 +20,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const { productos } = useProducts();
 
-  // CALCULAR CUÁNTAS UNIDADES FÍSICAS USA UN ITEM
-
-  const unidadesQueConsume = (item: CartItem) => {
-    if (item.tipo === "paquete") {
-      return Number(item.equivalencia) || 1;
-    }
-
-    return 1;
-  };
+  const productosPorId = useMemo(() => new Map(productos.map(p => [p._id, p])), [productos]);
 
   // AGREGAR AL CARRITO
 
   const agregarAlCarrito = (item: CartItem) => {
-    const producto = productos.find((p) => p._id === item.productoId);
+    const producto = productosPorId.get(item.productoId);
 
     if (!producto) {
       Alert.alert(
@@ -44,17 +37,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     const stockDisponible = Number(producto.stock) || 0;
 
+    const unidadesNuevoItem = consumoEnStock(item.tipo, item.equivalencia, producto.unidadStock);
+    if (!Number.isFinite(unidadesNuevoItem) || unidadesNuevoItem <= 0) {
+      Alert.alert('Medida inválida', 'La presentación no coincide con la unidad de inventario del producto.');
+      return;
+    }
+
     setCarrito((prev) => {
       // CUÁNTO STOCK YA ESTÁ RESERVADO EN EL CARRITO
       // PARA ESTE PRODUCTO
 
-      const stockEnCarrito = prev
-        .filter((p) => p.productoId === item.productoId)
-        .reduce((total, p) => total + p.cantidad * unidadesQueConsume(p), 0);
+      const stockEnCarrito = prev.reduce((total, p) =>
+        p.productoId === item.productoId
+          ? total + p.cantidad * consumoEnStock(p.tipo, p.equivalencia, producto.unidadStock)
+          : total, 0);
 
       // CUÁNTO STOCK CONSUME EL NUEVO ITEM
 
-      const unidadesNuevoItem = unidadesQueConsume(item);
 
       const stockDespuesDeAgregar = stockEnCarrito + unidadesNuevoItem;
 
@@ -66,9 +65,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         Alert.alert(
           "Stock insuficiente",
           disponibleParaCarrito > 0
-            ? `Solo puedes agregar ${disponibleParaCarrito} unidad${
-                disponibleParaCarrito === 1 ? "" : "es"
-              } más de ${producto.nombre}.`
+            ? `Quedan ${disponibleParaCarrito} ${producto.unidadStock === 'libra' ? 'lb' : 'unidades'} disponibles de ${producto.nombre}.`
             : `Ya tienes todo el stock disponible de ${producto.nombre} en el carrito.`,
         );
 
@@ -153,7 +150,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // TOTAL
   // =====================================================
 
-  const total = carrito.reduce((sum, item) => sum + item.total, 0);
+  const total = useMemo(() => carrito.reduce((sum, item) => sum + item.total, 0), [carrito]);
 
   return (
     <CartContext.Provider

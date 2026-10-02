@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useProducts } from "../context/product_context";
 import { Precio } from "../types/products";
+import { MEDIDAS, nombreMedida } from '@/constants/measures';
 
 const RED = "#C00000";
 const money = (value: string) => Number(value.replace(",", "."));
@@ -228,12 +229,12 @@ export default function EditProductScreen() {
           <View style={s.card}>
             <Text style={s.sectionTitle}>Existencias</Text>
             <Text selectable style={s.stock}>
-              {producto?.stock ?? params.cantidad ?? "—"}
+              {producto?.stock ?? params.cantidad ?? "—"} {producto?.unidadStock === 'libra' ? 'lb' : 'unid.'}
             </Text>
             <Text style={s.muted}>Stock disponible</Text>
             <Pressable
               accessibilityRole="button"
-              onPress={() => setModal("stock")}
+              onPress={() => { setTipoStock(producto?.unidadStock === 'libra' ? 'libra' : 'unidad'); setModal("stock"); }}
               style={s.secondary}
             >
               <Text style={s.link}>＋ Reponer stock</Text>
@@ -287,7 +288,7 @@ export default function EditProductScreen() {
                     <View
                       style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
                     >
-                      {(["unidad", "libra", "paquete"] as const).map((tipo) => (
+                      {MEDIDAS.filter(m => !producto?.unidadStock ? ['unidad', 'libra', 'paquete'].includes(m.tipo) : m.unidadStock === producto.unidadStock && (m.tipo === producto.unidadStock || producto.precios.some(p => p.tipo === m.tipo))).map(({ tipo }) => (
                         <Pressable
                           key={tipo}
                           onPress={() => setTipoStock(tipo)}
@@ -304,7 +305,7 @@ export default function EditProductScreen() {
                               color: tipoStock === tipo ? RED : "#5D3F3B",
                             }}
                           >
-                            {tipo}
+                            {nombreMedida(tipo)}
                           </Text>
                         </Pressable>
                       ))}

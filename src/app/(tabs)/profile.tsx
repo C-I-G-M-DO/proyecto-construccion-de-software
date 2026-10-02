@@ -55,7 +55,6 @@ export default function ProfileScreen() {
     <View style={card}>
       <Text style={title}>Seguridad y credenciales</Text>
       <View style={row}><Text style={{ color: t.secondary }}>Contraseña</Text><Text accessibilityLabel="Contraseña oculta" style={{ color: t.text, fontSize: 24, letterSpacing: 3 }}>••••••••</Text><Text style={{ color: t.secondary, fontSize: 12 }}>Oculta. No se guarda en este dispositivo.</Text></View>
-      {['Cambiar contraseña','Dispositivos vinculados'].map(label => <View key={label} style={row}><Text style={{ color: t.text }}>{label}</Text><Text style={{ color: t.secondary, fontSize: 12 }}>Próximamente</Text></View>)}
     </View>
     <View style={card}><Text style={title}>Apariencia</Text><Text style={{ color: t.secondary }}>Automática · {t.dark ? 'Modo oscuro' : 'Modo claro'} del dispositivo</Text></View>
     <Pressable accessibilityRole="button" disabled={leaving} onPress={logout} style={{ padding: 18, minHeight: 54, alignItems: 'center', borderRadius: 14, backgroundColor: t.button }}><Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 16 }}>{leaving ? 'Cerrando sesión…' : 'Cerrar sesión'}</Text></Pressable>

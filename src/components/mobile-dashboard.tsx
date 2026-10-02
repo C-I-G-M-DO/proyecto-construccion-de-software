@@ -1,5 +1,6 @@
 import { readSessionProfile } from '@/hooks/session-profile';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetchList } from '@/services/lists';
+import { formatMoney as money } from '@/utils/currency';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native';
@@ -7,7 +8,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSurtioTheme } from '@/hooks/use-surtio-theme';
 
 type Sale = { _id: string; subtotal: number; numeroOrden: number; createdAt: string };
-const money = (n: number) => `RD$ ${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export default function MobileDashboard() {
   const t = useSurtioTheme();
   const insets = useSafeAreaInsets();
@@ -25,22 +25,14 @@ export default function MobileDashboard() {
     setLoading(true); setError(null); setCount(null); setSales([]);
     async function load() {
       try {
-        const token = await AsyncStorage.getItem('token');
         const profile = await readSessionProfile();
         if (controller.signal.aborted) return;
         setBusiness(profile.businessName || 'Mi negocio');
         setName(profile.name?.trim().split(/\s+/)[0] || 'José');
-        const base = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
-        if (!token) throw new Error('Inicia sesión para consultar el resumen.');
-        if (!base) throw new Error('Falta configurar la dirección del backend.');
-        const read = async (route: string) => {
-          const res = await fetch(`${base}/api/${route}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal });
-          const data = await res.json().catch(() => null);
-          if (!res.ok) throw new Error(data?.message || `Error al consultar ${route}.`);
-          if (!Array.isArray(data)) throw new Error('El servidor devolvió un formato inesperado.');
-          return data;
-        };
-        const [newSales, products] = await Promise.all([read('sales'), read('products')]);
+        const [newSales, products] = await Promise.all([
+          fetchList<Sale>('sales', controller.signal),
+          fetchList('products', controller.signal),
+        ]);
         if (!controller.signal.aborted) { setSales(newSales); setCount(products.length); }
       } catch (cause) {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'No se pudo cargar el resumen.');
@@ -49,14 +41,13 @@ export default function MobileDashboard() {
     void load();
     return () => controller.abort();
   }, [revision]));
-  const today = sales.filter(s => new Date(s.createdAt).toDateString() === new Date().toDateString());
+  const todayKey = new Date().toDateString();
+  const today = sales.filter(s => new Date(s.createdAt).toDateString() === todayKey);
   const section = { color: t.text, fontSize: 15, fontWeight: '700' as const, letterSpacing: 0.5 };
   const card = { backgroundColor: t.card, borderRadius: 18, padding: 18, gap: 12, borderWidth: 1, borderColor: t.border };
   const metrics = [
     { title: 'VENTAS DE HOY', value: count === null ? '—' : money(today.reduce((sum,s) => sum+s.subtotal,0)), note: count === null ? 'Sin datos disponibles' : `${today.length} cobros registrados`, icon: '$' },
-    { title: 'FIAO POR COBRAR', value: 'Próximamente', note: 'Cuentas por cobrar', icon: '▤' },
     { title: 'PRODUCTOS', value: count === null ? '—' : String(count), note: 'Productos registrados', icon: '□' },
-    { title: 'STOCK BAJO', value: 'Próximamente', note: 'Alertas de inventario', icon: '△' },
   ];
   return <FlatList
     style={{ flex: 1, backgroundColor: t.background }} contentInsetAdjustmentBehavior="automatic"
@@ -80,7 +71,7 @@ export default function MobileDashboard() {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         {metrics.map(metric => <View key={metric.title} style={[card, { width: compact ? '100%' : '48%', flexGrow: 1 }]}>
           <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'space-between' }}><Text style={{ color: t.secondary, fontSize: 11, flex: 1 }}>{metric.title}</Text><Text style={{ color: t.primary }}>{metric.icon}</Text></View>
-          <Text selectable style={{ color: t.text, fontSize: metric.value === 'Próximamente' ? 17 : 24, fontWeight: '700' }}>{metric.value}</Text>
+          <Text selectable style={{ color: t.text, fontSize: 24, fontWeight: '700' }}>{metric.value}</Text>
           <Text style={{ color: t.secondary, fontSize: 12 }}>{metric.note}</Text>
         </View>)}
       </View>
@@ -88,13 +79,15 @@ export default function MobileDashboard() {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         {[
           { title: 'Registrar venta', subtitle: 'Seleccionar productos', icon: '▥', route: '../products' as const },
-          { title: 'Anotar a cuenta', subtitle: 'Libreta de fiao', icon: '▤', route: null },
           { title: 'Nuevo producto', subtitle: 'Entrada de stock', icon: '＋', route: '/add_product' as const },
-          { title: 'Hacer pedido', subtitle: 'Conectarse a Surtío', icon: '▱', route: null },
-        ].map(action => <Pressable key={action.title} disabled={!action.route} accessibilityRole="button" accessibilityState={{ disabled: !action.route }} onPress={() => action.route && router.push(action.route)} style={[card, { width: compact ? '100%' : '48%', flexGrow: 1 }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 4 }}><Text style={{ fontSize: 26, color: t.primary }}>{action.icon}</Text>{!action.route && <Text style={{ color: t.secondary, backgroundColor: t.muted, padding: 5, borderRadius: 10, fontSize: 12 }}>Pronto</Text>}</View>
+        ].map(action => <Pressable key={action.title} accessibilityRole="button" onPress={() => router.push(action.route)} style={[card, { width: compact ? '100%' : '48%', flexGrow: 1 }]}>
+          <Text style={{ fontSize: 26, color: t.primary }}>{action.icon}</Text>
           <Text style={{ color: t.text, fontSize: 17, fontWeight: '700' }}>{action.title}</Text><Text style={{ color: t.secondary, fontSize: 13 }}>{action.subtitle}</Text>
         </Pressable>)}
+      </View>
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        <Pressable onPress={() => router.push('/dispatch')} accessibilityRole="button" style={[card, { flex: 1 }]}><Text style={{ color: t.text, fontWeight: '700' }}>Despacho →</Text><Text style={{ color: t.secondary }}>Órdenes pendientes</Text></Pressable>
+        <Pressable onPress={() => router.push('/reports')} accessibilityRole="button" style={[card, { flex: 1 }]}><Text style={{ color: t.text, fontWeight: '700' }}>Reportes →</Text><Text style={{ color: t.secondary }}>Ventas e ingresos</Text></Pressable>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}><Text style={section}>ACTIVIDAD RECIENTE</Text><Pressable onPress={() => router.push('/history')} style={{ paddingVertical: 12 }}><Text style={{ color: t.primary }}>Ver historial →</Text></Pressable></View>
     </View>}
