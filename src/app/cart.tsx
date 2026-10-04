@@ -11,10 +11,10 @@ import {
   View,
 } from "react-native";
 
+import { nombreMedida } from "@/constants/measures";
+import { crearOrden } from "@/services/orders";
 import { useCart } from "../context/cart_context";
 import { useProducts } from "../context/product_context";
-import { nombreMedida } from '@/constants/measures';
-import { crearOrden } from '@/services/orders';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -41,14 +41,24 @@ export default function CartScreen() {
     vaciarCarrito,
   } = useCart();
 
+  // Se mantiene porque el contexto ya lo utiliza en otras partes
+  // del flujo de productos.
   const { obtenerProductos } = useProducts();
 
   const [loading, setLoading] = useState(false);
   const [sendingOrder, setSendingOrder] = useState(false);
-  const orderRequest = useRef<{ fingerprint: string; id: string } | null>(null);
+
+  const orderRequest = useRef<{
+    fingerprint: string;
+    id: string;
+  } | null>(null);
+
   const sendingOrderRef = useRef(false);
 
-  // Cliente
+  // =========================
+  // CLIENTE
+  // =========================
+
   const [telefono, setTelefono] = useState("");
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
@@ -58,20 +68,27 @@ export default function CartScreen() {
   const [nombreNuevoCliente, setNombreNuevoCliente] = useState("");
   const [registrandoCliente, setRegistrandoCliente] = useState(false);
 
-  // Fidelidad
+  // =========================
+  // FIDELIDAD
+  // =========================
+
   const [canjearPuntos, setCanjearPuntos] = useState(false);
   const [puntosCanjeados, setPuntosCanjeados] = useState("");
 
-  // Tema
+  // =========================
+  // TEMA
+  // =========================
+
   const background = useThemeColor({}, "background");
   const text = useThemeColor({}, "text");
   const card = useThemeColor({}, "card");
   const border = useThemeColor({}, "border");
   const primary = useThemeColor({}, "primary");
 
-  /**
-   * Buscar cliente por teléfono
-   */
+  // =========================
+  // BUSCAR CLIENTE
+  // =========================
+
   const buscarCliente = async () => {
     const telefonoLimpio = telefono.trim();
 
@@ -115,11 +132,9 @@ export default function CartScreen() {
       if (response.ok) {
         setCliente(data);
 
-        // Reiniciar opciones de fidelidad
         setCanjearPuntos(false);
         setPuntosCanjeados("");
 
-        // Ocultar registro si estaba abierto
         setMostrarRegistro(false);
         setNombreNuevoCliente("");
 
@@ -127,8 +142,8 @@ export default function CartScreen() {
       }
 
       if (response.status === 404) {
-        // No existe: permitimos registrarlo o continuar sin cliente
         setCliente(null);
+
         setCanjearPuntos(false);
         setPuntosCanjeados("");
 
@@ -148,9 +163,10 @@ export default function CartScreen() {
     }
   };
 
-  /**
-   * Registrar cliente directamente desde el carrito
-   */
+  // =========================
+  // REGISTRAR CLIENTE
+  // =========================
+
   const registrarCliente = async () => {
     const nombre = nombreNuevoCliente.trim();
     const telefonoLimpio = telefono.trim();
@@ -177,10 +193,12 @@ export default function CartScreen() {
 
       const response = await fetch(`${API_URL}/api/customers`, {
         method: "POST",
+
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+
         body: JSON.stringify({
           nombre,
           telefono: telefonoLimpio,
@@ -202,17 +220,15 @@ export default function CartScreen() {
           "Error",
           data.message || "No se pudo registrar el cliente.",
         );
+
         return;
       }
 
-      // Seleccionamos automáticamente el cliente recién creado
       setCliente(data);
 
-      // Limpiamos el formulario de registro
       setMostrarRegistro(false);
       setNombreNuevoCliente("");
 
-      // Reiniciamos fidelidad
       setCanjearPuntos(false);
       setPuntosCanjeados("");
 
@@ -229,21 +245,20 @@ export default function CartScreen() {
     }
   };
 
-  /**
-   * Quitar cliente de la venta
-   */
+  // =========================
+  // QUITAR CLIENTE
+  // =========================
+
   const quitarCliente = () => {
     setCliente(null);
     setCanjearPuntos(false);
     setPuntosCanjeados("");
-
-    // No eliminamos el teléfono automáticamente.
-    // Esto permite volver a buscarlo fácilmente.
   };
 
-  /**
-   * Activar / desactivar canje de puntos
-   */
+  // =========================
+  // CANJE DE PUNTOS
+  // =========================
+
   const cambiarCanje = () => {
     if (!cliente) {
       Alert.alert("Cliente", "Primero debes seleccionar un cliente.");
@@ -258,8 +273,6 @@ export default function CartScreen() {
     if (!canjearPuntos) {
       setCanjearPuntos(true);
 
-      // Por defecto proponemos todos los puntos disponibles,
-      // pero nunca más que el total de la venta.
       const puntosIniciales = Math.min(cliente.puntos, total);
 
       setPuntosCanjeados(String(Math.floor(puntosIniciales)));
@@ -269,16 +282,8 @@ export default function CartScreen() {
     }
   };
 
-  /**
-   * Puntos solicitados para canjear
-   */
   const puntosSolicitados = Number(puntosCanjeados) || 0;
 
-  /**
-   * Descuento real mostrado en pantalla.
-   *
-   * 1 punto = RD$1
-   */
   const descuentoAplicado =
     canjearPuntos && cliente
       ? Math.min(
@@ -288,45 +293,18 @@ export default function CartScreen() {
         )
       : 0;
 
-  /**
-   * Total final de la venta
-   */
   const totalFinal = Math.max(0, total - descuentoAplicado);
 
+  // =========================
+  // ENVIAR A DESPACHO
+  // =========================
+
   const enviarADespacho = async () => {
-    if (!carrito.length || sendingOrderRef.current || loading) return;
-    if (cliente || canjearPuntos) {
-      Alert.alert('Orden pendiente', 'Por ahora las órdenes para despacho no incluyen clientes ni puntos. Quita el cliente antes de enviarla.');
-      return;
-    }
-    const fingerprint = JSON.stringify(carrito.map(({ productoId, tipo, cantidad }) => ({ productoId, tipo, cantidad })));
-    if (orderRequest.current?.fingerprint !== fingerprint) {
-      orderRequest.current = { fingerprint, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
-    }
-    sendingOrderRef.current = true;
-    setSendingOrder(true);
-    try {
-      await crearOrden(carrito, orderRequest.current.id);
-      vaciarCarrito();
-      orderRequest.current = null;
-      router.replace('/dispatch');
-    } catch (cause) {
-      Alert.alert('No se pudo enviar la orden', cause instanceof Error ? cause.message : 'Inténtalo nuevamente.');
-    } finally { setSendingOrder(false); sendingOrderRef.current = false; }
-  };
-
-  /**
-   * Realizar venta
-   */
-  const realizarVenta = async () => {
-    if (loading) return;
-
-    if (carrito.length === 0) {
-      Alert.alert("Carrito vacío");
+    if (!carrito.length || sendingOrderRef.current || loading) {
       return;
     }
 
-    // Validación del canje
+    // Validar canje de puntos
     if (canjearPuntos) {
       if (!cliente) {
         Alert.alert(
@@ -338,11 +316,7 @@ export default function CartScreen() {
 
       const puntos = Number(puntosCanjeados);
 
-      if (
-        !Number.isFinite(puntos) ||
-        puntos <= 0 ||
-        !Number.isInteger(puntos)
-      ) {
+      if (!Number.isInteger(puntos) || puntos <= 0) {
         Alert.alert("Puntos", "Introduce una cantidad válida de puntos.");
         return;
       }
@@ -356,97 +330,81 @@ export default function CartScreen() {
       }
 
       if (puntos > total) {
-        Alert.alert(
-          "Puntos",
-          `No puedes canjear más de RD$${total} en esta venta.`,
-        );
+        Alert.alert("Puntos", `No puedes canjear más de RD$${total}.`);
         return;
       }
     }
+
+    /*
+     * Fingerprint para evitar crear accidentalmente
+     * dos órdenes si el usuario pulsa varias veces
+     * o si hay un reintento de red.
+     */
+    const fingerprint = JSON.stringify({
+      items: carrito.map(({ productoId, tipo, cantidad }) => ({
+        productoId,
+        tipo,
+        cantidad,
+      })),
+
+      clienteId: cliente?._id || null,
+
+      puntosCanjeados: canjearPuntos ? descuentoAplicado : 0,
+    });
+
+    if (orderRequest.current?.fingerprint !== fingerprint) {
+      orderRequest.current = {
+        fingerprint,
+
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      };
+    }
+
+    sendingOrderRef.current = true;
+    setSendingOrder(true);
 
     try {
-      setLoading(true);
+      /*
+       * IMPORTANTE:
+       *
+       * Aquí NO se registra la venta.
+       *
+       * Solamente se crea una ORDEN PENDIENTE.
+       *
+       * La venta y el descuento del inventario
+       * ocurrirán posteriormente en DESPACHO.
+       */
+      await crearOrden(
+        carrito,
+        orderRequest.current.id,
+        cliente?._id || null,
+        canjearPuntos ? descuentoAplicado : 0,
+      );
 
-      const token = await AsyncStorage.getItem("token");
-
-      if (!token) {
-        Alert.alert("Error", "Sesión expirada.");
-        return;
-      }
-
-      const response = await fetch(`${API_URL}/api/sales`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          items: carrito,
-          subtotal: total,
-          metodoPago: "efectivo",
-
-          // Si no hay cliente, enviamos null.
-          clienteId: cliente?._id || null,
-
-          // Si no se canjean puntos, enviamos 0.
-          puntosCanjeados: canjearPuntos ? puntosSolicitados : 0,
-        }),
-      });
-
-      const textResponse = await response.text();
-
-      let data: any = {};
-
-      try {
-        data = textResponse ? JSON.parse(textResponse) : {};
-      } catch {
-        data = {};
-      }
-
-      if (!response.ok) {
-        Alert.alert("Error", data.message || "No se pudo realizar la venta.");
-        return;
-      }
-
-      // Guardamos información antes de limpiar
-      const fidelidad = data.fidelidad;
-
-      // Vaciar carrito
+      // Limpiar carrito después de crear
+      // correctamente la orden.
       vaciarCarrito();
 
-      // Actualizar productos para reflejar el nuevo stock
-      await obtenerProductos();
+      orderRequest.current = null;
 
-      // Limpiar cliente/fidelidad
-      setCliente(null);
-      setTelefono("");
-      setCanjearPuntos(false);
-      setPuntosCanjeados("");
-      setMostrarRegistro(false);
-      setNombreNuevoCliente("");
-
-      if (fidelidad) {
-        Alert.alert(
-          "Venta realizada",
-          `Venta realizada correctamente.\n\n` +
-            `Cliente: ${fidelidad.nombre}\n` +
-            `Puntos canjeados: ${fidelidad.puntosCanjeados}\n` +
-            `Puntos ganados: ${fidelidad.puntosGanados}\n` +
-            `Puntos disponibles: ${fidelidad.puntosDisponibles}`,
-        );
-      } else {
-        Alert.alert("Venta realizada", "La venta se realizó correctamente.");
-      }
-
-      router.replace("/history");
-    } catch (error) {
-      console.log("ERROR VENTA:", error);
-
-      Alert.alert("Error", "No se pudo conectar al servidor.");
+      /*
+       * Ir directamente a despacho.
+       */
+      router.replace("/dispatch");
+    } catch (cause) {
+      Alert.alert(
+        "No se pudo enviar la orden",
+        cause instanceof Error ? cause.message : "Inténtalo nuevamente.",
+      );
     } finally {
-      setLoading(false);
+      setSendingOrder(false);
+      sendingOrderRef.current = false;
     }
   };
+
+  // =========================
+  // INTERFAZ
+  // =========================
 
   return (
     <View
@@ -609,10 +567,14 @@ export default function CartScreen() {
         )}
         ListFooterComponent={
           carrito.length > 0 ? (
-            <View style={{ marginTop: 20 }}>
-              {/* ========================= */}
-              {/* CLIENTE / FIDELIDAD */}
-              {/* ========================= */}
+            <View
+              style={{
+                marginTop: 20,
+              }}
+            >
+              {/* =========================
+                  CLIENTE / FIDELIDAD
+              ========================== */}
 
               <View
                 style={{
@@ -654,9 +616,6 @@ export default function CartScreen() {
                     onChangeText={(value) => {
                       setTelefono(value);
 
-                      // Si cambia el teléfono, quitamos el cliente
-                      // seleccionado para evitar asociar la venta
-                      // al cliente equivocado.
                       if (cliente) {
                         setCliente(null);
                         setCanjearPuntos(false);
@@ -704,9 +663,7 @@ export default function CartScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* ========================= */}
                 {/* CLIENTE ENCONTRADO */}
-                {/* ========================= */}
 
                 {cliente && (
                   <View
@@ -763,10 +720,14 @@ export default function CartScreen() {
                       </Text>
                     </TouchableOpacity>
 
-                    {/* CANJEAR PUNTOS */}
+                    {/* CANJE */}
 
                     {cliente.puntos > 0 && (
-                      <View style={{ marginTop: 15 }}>
+                      <View
+                        style={{
+                          marginTop: 15,
+                        }}
+                      >
                         <TouchableOpacity
                           onPress={cambiarCanje}
                           style={{
@@ -790,7 +751,11 @@ export default function CartScreen() {
                         </TouchableOpacity>
 
                         {canjearPuntos && (
-                          <View style={{ marginTop: 12 }}>
+                          <View
+                            style={{
+                              marginTop: 12,
+                            }}
+                          >
                             <Text
                               style={{
                                 color: text,
@@ -803,7 +768,6 @@ export default function CartScreen() {
                             <TextInput
                               value={puntosCanjeados}
                               onChangeText={(value) => {
-                                // Solo permitimos números enteros
                                 const limpio = value.replace(/[^0-9]/g, "");
 
                                 setPuntosCanjeados(limpio);
@@ -841,9 +805,7 @@ export default function CartScreen() {
                   </View>
                 )}
 
-                {/* ========================= */}
-                {/* CLIENTE NO ENCONTRADO */}
-                {/* ========================= */}
+                {/* CLIENTE NO REGISTRADO */}
 
                 {!cliente && mostrarRegistro && (
                   <View
@@ -939,9 +901,9 @@ export default function CartScreen() {
                 )}
               </View>
 
-              {/* ========================= */}
-              {/* RESUMEN DE VENTA */}
-              {/* ========================= */}
+              {/* =========================
+                  RESUMEN
+              ========================== */}
 
               <Text
                 style={{
@@ -970,7 +932,13 @@ export default function CartScreen() {
                     justifyContent: "space-between",
                   }}
                 >
-                  <Text style={{ color: text }}>Subtotal</Text>
+                  <Text
+                    style={{
+                      color: text,
+                    }}
+                  >
+                    Subtotal
+                  </Text>
 
                   <Text
                     style={{
@@ -990,7 +958,13 @@ export default function CartScreen() {
                       marginTop: 8,
                     }}
                   >
-                    <Text style={{ color: text }}>Descuento por puntos</Text>
+                    <Text
+                      style={{
+                        color: text,
+                      }}
+                    >
+                      Descuento por puntos
+                    </Text>
 
                     <Text
                       style={{
@@ -998,7 +972,8 @@ export default function CartScreen() {
                         fontWeight: "bold",
                       }}
                     >
-                      -RD${descuentoAplicado}
+                      -RD$
+                      {descuentoAplicado}
                     </Text>
                   </View>
                 )}
@@ -1039,41 +1014,31 @@ export default function CartScreen() {
                 </View>
               </View>
 
-              {/* ========================= */}
-              {/* BOTÓN VENDER */}
-              {/* ========================= */}
+              {/* =========================
+                  ENVIAR A DESPACHO
+              ========================== */}
 
               <TouchableOpacity
                 disabled={loading || sendingOrder || carrito.length === 0}
                 onPress={enviarADespacho}
-                style={{ borderColor: primary, borderWidth: 1, padding: 16, borderRadius: 14, marginTop: 20, alignItems: 'center', opacity: loading || sendingOrder ? 0.6 : 1 }}
-              >
-                <Text style={{ color: primary, fontWeight: 'bold', fontSize: 16 }}>
-                  {sendingOrder ? 'Enviando…' : 'Enviar orden a despacho'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                disabled={loading || sendingOrder || carrito.length === 0}
-                onPress={realizarVenta}
                 style={{
-                  backgroundColor:
-                    loading || carrito.length === 0 ? "#999" : primary,
+                  borderColor: primary,
+                  borderWidth: 1,
                   padding: 16,
                   borderRadius: 14,
                   marginTop: 20,
                   alignItems: "center",
-                  marginBottom: 20,
+                  opacity: loading || sendingOrder ? 0.6 : 1,
                 }}
               >
                 <Text
                   style={{
-                    color: "white",
+                    color: primary,
                     fontWeight: "bold",
-                    fontSize: 18,
+                    fontSize: 16,
                   }}
                 >
-                  {loading ? "Procesando..." : `Vender (RD$${totalFinal})`}
+                  {sendingOrder ? "Enviando…" : "Enviar orden a despacho"}
                 </Text>
               </TouchableOpacity>
             </View>
