@@ -1,4 +1,5 @@
 import { useSurtioTheme, useSurtioStyles } from '@/hooks/use-surtio-theme';
+import { BrandMark } from '@/components/business-ui';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -168,10 +169,7 @@ export default function LoginScreen() {
       >
         <View style={styles.container}>
           <View style={styles.brandRow}>
-            <View style={styles.logo}>
-              <Text style={styles.logoText}>S</Text>
-              <View style={styles.logoDot} />
-            </View>
+            <BrandMark size={72} />
 
             <Text style={styles.brandName}>Surtío</Text>
             <View style={styles.brandBadge}><Text style={styles.brandBadgeText}>PUNTO DE VENTA Y GESTIÓN</Text></View>

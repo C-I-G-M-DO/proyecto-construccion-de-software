@@ -1,1 +1,1 @@
-export { default } from '@/components/mobile-dashboard';
+export { default } from '@/components/web-dashboard.web';

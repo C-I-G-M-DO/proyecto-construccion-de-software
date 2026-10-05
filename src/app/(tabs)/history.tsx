@@ -1,370 +1,53 @@
-import { useSurtioTheme, useSurtioStyles } from '@/hooks/use-surtio-theme';
-import { nombreMedida } from '@/constants/measures';
-import { useCallback, useRef, useState } from "react";
-import { useFocusEffect } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  Platform,
-  FlatList,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
-type Venta = {
-  _id: string;
-  numeroOrden: number;
-  subtotal: number;
-  metodoPago?: string;
-  createdAt: string;
-
-  items: {
-    nombre: string;
-    cantidad: number;
-    precio: number;
-    tipo: string;
-  }[];
-};
+import { useMemo, useState } from 'react';
+import { FlatList, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BusinessDate, LoadNotice, Metric } from '@/components/business-ui';
+import SaleCard from '@/components/sale-card';
+import { useFocusedList } from '@/hooks/use-focused-list';
+import { useCurrentDay } from '@/hooks/use-current-day';
+import { useSurtioStyles, useSurtioTheme } from '@/hooks/use-surtio-theme';
+import { businessStyles } from '@/styles/business.styles';
+import type { HistoryFilters, Venta } from '@/types/sales';
+import { amountError, filterSales, INITIAL_FILTERS, newestSales, saleTotal } from '@/utils/history';
+import { formatMoney } from '@/utils/currency';
 
 export default function HistoryScreen() {
-  const theme = useSurtioTheme();
-  const insets = useSafeAreaInsets();
-  const requestRef = useRef<AbortController | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [ventas, setVentas] = useState<Venta[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [ventaAbierta, setVentaAbierta] = useState<string | null>(null);
-
-  // 🔍 BUSCADOR
-  const [search, setSearch] = useState("");
-
-  const background = theme.background;
-  const text = theme.text;
-  const card = theme.card;
-  const border = theme.border;
-  const primary = theme.primary;
-
-  const API_URL = process.env.EXPO_PUBLIC_API_URL;
-
-  if (!API_URL) {
-    throw new Error('Falta EXPO_PUBLIC_API_URL en el archivo .env');
-  };
-
-  const obtenerVentas = useCallback(async () => {
-    requestRef.current?.abort();
-    const controller = new AbortController();
-    requestRef.current = controller;
-    setLoading(true);
-    setError(null);
-    try {
-      const token = await AsyncStorage.getItem("token");
-      if (controller.signal.aborted) return;
-      if (!token) throw new Error("Inicia sesión para consultar tus ventas.");
-      const res = await fetch(`${API_URL.replace(/\/$/, '')}/api/sales`, {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: controller.signal,
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.message || `No se pudo cargar el historial (HTTP ${res.status}).`);
-      if (!Array.isArray(data)) throw new Error("El servidor devolvió un historial con formato inesperado.");
-      if (!controller.signal.aborted) setVentas(data);
-    } catch (cause) {
-      if (!controller.signal.aborted) {
-        setError(cause instanceof Error ? cause.message : "No se pudo cargar el historial.");
-      }
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  }, [API_URL]);
-
-  useFocusEffect(useCallback(() => {
-    setVentas([]);
-    void obtenerVentas();
-    return () => requestRef.current?.abort();
-  }, [obtenerVentas]));
-
-  // 🔍 FILTRAR POR NUMERO DE ORDEN
-  const ventasFiltradas = ventas.filter((venta) =>
-    venta.numeroOrden?.toString().includes(search.trim()),
-  );
-
-  const formatearFecha = (fecha: string) => {
-    const d = new Date(fecha);
-
-    return d.toLocaleString([], {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  const tituloVenta = (venta: Venta) => {
-    if (!venta.items || venta.items.length === 0) {
-      return "Venta";
-    }
-
-    const primero = venta.items[0].nombre;
-    const restantes = venta.items.length - 1;
-
-    if (restantes <= 0) return primero;
-
-    return `${primero} +${restantes}`;
-  };
-
-  return (
-    <FlatList
-      style={{ flex: 1, backgroundColor: background }}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{
-        flexGrow: 1,
-        width: '100%',
-        maxWidth: 1080,
-        alignSelf: 'center',
-        paddingHorizontal: 20,
-        paddingTop: Platform.OS === 'ios' ? 16 : insets.top + 16,
-        paddingBottom: 32,
-      }}
-      keyboardDismissMode="on-drag"
-      keyboardShouldPersistTaps="handled"
-      alwaysBounceVertical
-      refreshing={loading}
-      onRefresh={() => void obtenerVentas()}
-      ListHeaderComponent={<View>
-      {/* TITULO */}
-      <Text
-        style={{
-          fontSize: 28,
-          fontWeight: "bold",
-          color: text,
-          marginBottom: 15,
-        }}
-      >
-        Historial
-      </Text>
-
-      <Text style={{ color: theme.secondary, fontSize: 15, lineHeight: 22, marginBottom: 20 }}>Consulta las ventas de tu negocio</Text>
-      {!error && !loading && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
-        <View style={{ flexGrow: 1, flexBasis: 140, backgroundColor: card, borderWidth: 1, borderColor: border, padding: 18, borderRadius: 16, gap: 8 }}>
-          <Text style={{ color: theme.secondary, fontSize: 13 }}>Ventas registradas</Text>
-          <Text style={{ color: text, fontSize: 26, fontWeight: '700' }}>{ventas.length}</Text>
+  const t = useSurtioTheme(), s = useSurtioStyles(businessStyles), insets = useSafeAreaInsets();
+  const { data, loading, error, reload } = useFocusedList<Venta>('sales');
+  const [filters, setFilters] = useState<HistoryFilters>(INITIAL_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(Platform.OS === 'web');
+  const today = useCurrentDay();
+  const invalid = amountError(filters);
+  const filtered = useMemo(() => invalid || !today ? [] : filterSales(data, filters, today), [data, filters, today, invalid]);
+  const latestId = newestSales(data)[0]?._id;
+  const update = (key: keyof HistoryFilters, value: string) => setFilters(current => ({ ...current, [key]: value }));
+  return <FlatList
+    style={{ flex: 1, backgroundColor: t.background }}
+    contentInsetAdjustmentBehavior="automatic"
+    contentContainerStyle={[s.page, { paddingTop: Platform.OS === 'android' ? insets.top + 20 : 24, flexGrow: 1 }]}
+    keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+    refreshing={loading} onRefresh={() => void reload()}
+    data={error ? [] : filtered} keyExtractor={sale => sale._id}
+    ListHeaderComponent={<View style={{ gap: 20, marginBottom: 20 }}>
+      <View style={[s.row, { justifyContent: 'space-between' }]}><View style={{ gap: 6 }}><Text style={s.title}>Historial de órdenes</Text><Text style={s.muted}>Consulta las ventas y sus productos.</Text></View><BusinessDate /></View>
+      <View style={s.card}>
+        <View style={[s.row, { justifyContent: 'space-between' }]}>
+          {Platform.OS === 'web' ? <Text style={s.heading}>Filtrar órdenes</Text> : <Pressable accessibilityRole="button" accessibilityState={{ expanded: filtersOpen }} onPress={() => setFiltersOpen(value => !value)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={s.link}>{filtersOpen ? 'Ocultar filtros' : 'Más filtros'}</Text></Pressable>}
+          <Pressable accessibilityRole="button" onPress={() => setFilters(INITIAL_FILTERS)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={s.link}>Restablecer</Text></Pressable>
         </View>
-        <View style={{ flexGrow: 1, flexBasis: 180, backgroundColor: card, borderWidth: 1, borderColor: border, padding: 18, borderRadius: 16, gap: 8 }}>
-          <Text style={{ color: theme.secondary, fontSize: 13 }}>Total registrado</Text>
-          <Text style={{ color: text, fontSize: 26, fontWeight: '700' }}>RD$ {ventas.reduce((sum, sale) => sum + sale.subtotal, 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+        {filtersOpen && <View style={s.row}>{([
+          ['todos', 'Todo el historial'], ['dia', 'Hoy'], ['semana', 'Esta semana'], ['mes', 'Este mes'],
+        ] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: filters.periodo === value }} onPress={() => update('periodo', value)} style={[s.chip, filters.periodo === value && { backgroundColor: t.button }]}><Text style={{ color: filters.periodo === value ? '#FFFFFF' : t.secondary, fontWeight: '600' }}>{label}</Text></Pressable>)}</View>}
+        <View style={[s.row, { alignItems: 'flex-start' }]}>
+          {([['orden', 'Número de orden', 'Ej. 1024'], ['producto', 'Producto', 'Buscar por nombre']] as const).filter(([key]) => key === 'orden' || filtersOpen).map(([key, label, placeholder]) => <View key={key} style={{ flexGrow: 1, flexBasis: 220, gap: 8 }}><Text style={s.label}>{label}</Text><TextInput accessibilityLabel={label} style={s.input} placeholderTextColor={t.secondary} placeholder={placeholder} value={filters[key]} onChangeText={value => update(key, value)} /></View>)}
+          {filtersOpen && ([['montoMin', 'Monto mínimo (RD$)'], ['montoMax', 'Monto máximo (RD$)']] as const).map(([key, label]) => <View key={key} style={{ flexGrow: 1, flexBasis: 160, gap: 8 }}><Text style={s.label}>{label}</Text><TextInput accessibilityLabel={label} style={s.input} placeholderTextColor={t.secondary} placeholder="Sin límite" keyboardType="decimal-pad" value={filters[key]} onChangeText={value => update(key, value)} /></View>)}
         </View>
-      </View>}
-      {/* 🔍 BUSCADOR */}
-      <TextInput
-        placeholder="Buscar orden #..."
-        placeholderTextColor="#796763"
-        value={search}
-        onChangeText={setSearch}
-        keyboardType="numeric"
-        style={{
-          backgroundColor: card,
-          borderWidth: 1,
-          borderColor: border,
-          color: text,
-          padding: 14,
-          borderRadius: 14,
-          marginBottom: 15,
-          fontSize: 16,
-        }}
-      />
-
-      {error && <View style={{ paddingVertical: 16, gap: 12 }}>
-        <Text selectable style={{ color: text }}>{error}</Text>
-        <TouchableOpacity accessibilityRole="button" onPress={() => void obtenerVentas()} style={{ paddingVertical: 12 }}>
-          <Text style={{ color: primary, fontWeight: '700' }}>Reintentar</Text>
-        </TouchableOpacity>
-      </View>}
-      </View>}
-        data={ventasFiltradas}
-        keyExtractor={(item) => item._id}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <Text
-            style={{
-              color: text,
-              textAlign: "center",
-              marginTop: 40,
-            }}
-          >
-            {loading ? "Cargando ventas…" : error ? "" : search.trim() ? "No hay órdenes con ese número" : "Todavía no hay ventas"}
-          </Text>
-        }
-        renderItem={({ item }) => {
-          const abierto = ventaAbierta === item._id;
-
-          return (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setVentaAbierta(abierto ? null : item._id)}
-              style={{
-                backgroundColor: card,
-                borderWidth: 1,
-                borderColor: border,
-                borderRadius: 16,
-                padding: 15,
-                marginBottom: 12,
-              }}
-            >
-              {/* HEADER */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  gap: 12,
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <View style={{ flexGrow: 1, flexBasis: 180 }}>
-                  {/* 🔥 BLOQUE ORDEN */}
-                  <View
-                    style={{
-                      alignSelf: "flex-start",
-                      backgroundColor: theme.tint,
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 999,
-                      marginBottom: 8,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: primary,
-                        fontWeight: "bold",
-                        fontSize: 13,
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      ORDEN #{item.numeroOrden}
-                    </Text>
-                  </View>
-
-                  {/* TITULO */}
-                  <Text
-                    style={{
-                      color: text,
-                      fontWeight: "bold",
-                      fontSize: 18,
-                      marginTop: 3,
-                    }}
-                  >
-                    {tituloVenta(item)}
-                  </Text>
-
-                  <Text
-                    style={{
-                      color: text,
-                      opacity: 0.7,
-                      marginTop: 4,
-                    }}
-                  >
-                    {item.items.length} artículo(s)
-                  </Text>
-                </View>
-
-                {/* TOTAL */}
-                <Text
-                  style={{
-                    color: primary,
-                    fontWeight: "bold",
-                    fontSize: 20,
-                  }}
-                >
-                  RD$ {item.subtotal.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </Text>
-              </View>
-
-              {/* FECHA */}
-              <Text
-                style={{
-                  color: text,
-                  opacity: 0.65,
-                  marginTop: 8,
-                }}
-              >
-                {formatearFecha(item.createdAt)}
-              </Text>
-
-              {/* PAGO */}
-              <Text
-                style={{
-                  color: text,
-                  opacity: 0.75,
-                  marginTop: 4,
-                }}
-              >
-                Pago: {item.metodoPago || "efectivo"}
-              </Text>
-
-              {/* BOTON */}
-              <Text
-                style={{
-                  color: primary,
-                  marginTop: 10,
-                  fontWeight: "600",
-                }}
-              >
-                {abierto ? "Ocultar detalles" : "Ver detalles"}
-              </Text>
-
-              {/* DETALLES */}
-              {abierto && (
-                <View style={{ marginTop: 10 }}>
-                  {item.items.map((prod, index) => (
-                    <View
-                      key={index}
-                      style={{
-                        borderTopWidth: 1,
-                        borderTopColor: border,
-                        paddingTop: 10,
-                        marginTop: 10,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: text,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {prod.nombre}
-                      </Text>
-
-                      <Text
-                        style={{
-                          color: text,
-                          marginTop: 3,
-                        }}
-                      >
-                        {prod.cantidad} x RD$
-                        {prod.precio} ({nombreMedida(prod.tipo)})
-                      </Text>
-
-                      <Text
-                        style={{
-                          color: primary,
-                          marginTop: 3,
-                          fontWeight: "600",
-                        }}
-                      >
-                        RD$
-                        {(prod.cantidad * prod.precio).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        }}
-      />
-  );
+        {invalid && <Text accessibilityRole="alert" style={s.link}>{invalid}</Text>}
+      </View>
+      {error ? <LoadNotice message={error} onRetry={() => void reload()} /> : !loading && !invalid && <View style={s.row}><Metric style={{ flexBasis: 160 }} label="Órdenes encontradas" value={String(filtered.length)} /><Metric style={{ flexBasis: 160 }} label="Total del período filtrado" value={formatMoney(filtered.reduce((sum, sale) => sum + saleTotal(sale), 0))} /></View>}
+      <Text style={s.heading}>Órdenes · más recientes primero</Text>
+    </View>}
+    ListEmptyComponent={!error && !invalid ? <LoadNotice message={loading ? 'Cargando órdenes…' : data.length ? 'No hay órdenes con estos filtros. Prueba otro período o restablece la búsqueda.' : 'Todavía no hay ventas registradas.'} /> : null}
+    renderItem={({ item }) => <SaleCard sale={item} latest={item._id === latestId} />}
+  />;
 }

@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Redirect } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { Redirect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { StartupSplash } from '@/components/startup-splash';
 
 export default function IndexScreen() {
-  const [destination, setDestination] = useState<'/home' | '/login' | null>(null);
+  const { notification } = useLocalSearchParams<{ notification?: string }>();
+  const [destination, setDestination] = useState<'/home' | '/login' | '/alerts' | null>(null);
+  const [canNavigate, setCanNavigate] = useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
@@ -12,20 +14,20 @@ export default function IndexScreen() {
     let active = true;
     setFailed(false);
     AsyncStorage.getItem('token').then((token) => {
-      if (active) setDestination(token ? '/home' : '/login');
+      if (active) setDestination(token ? notification === 'expiry' ? '/alerts' : '/home' : '/login');
     }).catch(() => {
       if (active) setFailed(true);
     });
     return () => { active = false; };
-  }, [attempt]);
+  }, [attempt, notification]);
 
-  if (destination) return <Redirect href={destination} />;
-  return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#F7F7F7', gap: 16 }}>
-    {failed ? <>
-      <Text>No se pudo recuperar la sesión guardada.</Text>
-      <Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={{ padding: 16 }}>
-        <Text style={{ color: '#C00000' }}>Reintentar</Text>
-      </Pressable>
-    </> : <ActivityIndicator color="#C00000" size="large" />}
-  </View>;
+  const finishStartup = useCallback(() => setCanNavigate(true), []);
+
+  if (canNavigate && destination) return <Redirect href={destination} />;
+  return <StartupSplash
+    ready={destination !== null}
+    failed={failed}
+    onRetry={() => setAttempt(value => value + 1)}
+    onFinish={finishStartup}
+  />;
 }

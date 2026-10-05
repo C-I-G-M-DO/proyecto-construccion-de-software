@@ -49,7 +49,7 @@ El backend actual filtra datos por `userId`; `User` no tiene roles ni identifica
 
 ## 3. Reportes
 
-El frontend ya calcula reportes de hoy, 7 y 30 días a partir de `GET /api/sales`: ingresos, número de ventas, ticket promedio y productos con más ingresos. Por ahora **no necesita un endpoint nuevo**. Las ventas deben conservar `createdAt`, `subtotal` e `items` completos. Si el historial crece, añadir una consulta filtrada por fechas o un endpoint de agregados; acordar una zona horaria de negocio para que el corte de “hoy” coincida en todos los dispositivos.
+La implementación actual de Reportes Web conserva las consultas que ya tenía el frontend: `GET /api/reports?desde=YYYY-MM-DD&hasta=YYYY-MM-DD` y `GET /api/reports/daily`. Los reportes se descargan en Excel o se imprimen/guardan como PDF desde el navegador. El dashboard y el historial siguen usando `GET /api/sales`. Consultar [el contrato y las pruebas actuales](web-mobile-vencimientos.md) para los tipos de respuesta, filtros de historial y vencimientos por lote. Este apartado reemplaza la descripción anterior de reportes calculados exclusivamente en el cliente; el backend no se modificó en esta adaptación.
 
 ## Comprobaciones de integración
 

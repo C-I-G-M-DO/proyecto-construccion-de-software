@@ -3,13 +3,17 @@ import { fetchList } from '@/services/lists';
 import { formatMoney as money } from '@/utils/currency';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSurtioTheme } from '@/hooks/use-surtio-theme';
+import { BrandMark, BusinessDate } from '@/components/business-ui';
+import type { Venta as Sale } from '@/types/sales';
+import { saleTotal } from '@/utils/history';
+import { useCurrentDay } from '@/hooks/use-current-day';
 
-type Sale = { _id: string; subtotal: number; numeroOrden: number; createdAt: string };
 export default function MobileDashboard() {
   const t = useSurtioTheme();
+  const currentDay = useCurrentDay();
   const insets = useSafeAreaInsets();
   const { width, fontScale } = useWindowDimensions();
   const compact = width < 360 || fontScale > 1.3;
@@ -41,30 +45,28 @@ export default function MobileDashboard() {
     void load();
     return () => controller.abort();
   }, [revision]));
-  const todayKey = new Date().toDateString();
+  const todayKey = currentDay?.toDateString();
   const today = sales.filter(s => new Date(s.createdAt).toDateString() === todayKey);
   const section = { color: t.text, fontSize: 15, fontWeight: '700' as const, letterSpacing: 0.5 };
   const card = { backgroundColor: t.card, borderRadius: 18, padding: 18, gap: 12, borderWidth: 1, borderColor: t.border };
   const metrics = [
-    { title: 'VENTAS DE HOY', value: count === null ? '—' : money(today.reduce((sum,s) => sum+s.subtotal,0)), note: count === null ? 'Sin datos disponibles' : `${today.length} cobros registrados`, icon: '$' },
+    { title: 'VENTAS DE HOY', value: count === null ? '—' : money(today.reduce((sum,s) => sum+saleTotal(s),0)), note: count === null ? 'Sin datos disponibles' : `${today.length} cobros registrados`, icon: '$' },
     { title: 'PRODUCTOS', value: count === null ? '—' : String(count), note: 'Productos registrados', icon: '□' },
   ];
-  return <FlatList
+  return <ScrollView
     style={{ flex: 1, backgroundColor: t.background }} contentInsetAdjustmentBehavior="automatic"
     contentContainerStyle={{ paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 16 : insets.top + 16, paddingBottom: 32, width: '100%', maxWidth: 1000, alignSelf: 'center', flexGrow: 1 }}
-    refreshing={loading} onRefresh={() => setRevision(n => n+1)} data={sales.slice(0,5)} keyExtractor={s => s._id}
-    ListHeaderComponent={<View style={{ gap: 24, marginBottom: 16 }}>
+    refreshControl={<RefreshControl refreshing={loading} onRefresh={() => setRevision(n => n+1)} />}>
+    <View style={{ gap: 24 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: t.button, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#FFFFFF', fontSize: 30 }}>S</Text></View>
+        <BrandMark />
         <View style={{ flex: 1, gap: 4 }}><Text style={{ color: t.primary, fontSize: 11, fontWeight: '700', letterSpacing: 0.7 }}>{business.toUpperCase()}</Text><Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }}>Inicio</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel="Abrir perfil" onPress={() => router.push('../profile')} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.button, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>{name.charAt(0).toUpperCase()}</Text></Pressable>
       </View>
       <View style={{ gap: 8 }}>
         <Text style={{ color: t.text, fontSize: 26, fontWeight: '700' }}>¡Dímelo, {name}! 👋</Text>
         <Text style={{ color: t.secondary }}>{business}</Text>
-        <View style={{ backgroundColor: t.muted, borderRadius: 12, padding: 12, marginTop: 4 }}>
-          <Text style={{ color: t.secondary, fontWeight: '600', fontSize: 13 }}>{new Date().toLocaleDateString('es-DO', { weekday: 'long', day: 'numeric', month: 'short' })}</Text>
-        </View>
+        <BusinessDate />
       </View>
       {error && <View style={card}><Text style={{ color: t.text }}>{error}</Text><Pressable onPress={() => setRevision(n => n+1)} style={{ paddingVertical: 12 }}><Text style={{ color: t.primary }}>Reintentar</Text></Pressable></View>}
       <Text style={section}>RESUMEN DE OPERACIÓN</Text>
@@ -87,11 +89,8 @@ export default function MobileDashboard() {
       </View>
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <Pressable onPress={() => router.push('/dispatch')} accessibilityRole="button" style={[card, { flex: 1 }]}><Text style={{ color: t.text, fontWeight: '700' }}>Despacho →</Text><Text style={{ color: t.secondary }}>Órdenes pendientes</Text></Pressable>
-        <Pressable onPress={() => router.push('/reports')} accessibilityRole="button" style={[card, { flex: 1 }]}><Text style={{ color: t.text, fontWeight: '700' }}>Reportes →</Text><Text style={{ color: t.secondary }}>Ventas e ingresos</Text></Pressable>
+        <Pressable onPress={() => router.push('/alerts')} accessibilityRole="button" style={[card, { flex: 1 }]}><Text style={{ color: t.text, fontWeight: '700' }}>Alertas →</Text><Text style={{ color: t.secondary }}>Fechas de vencimiento</Text></Pressable>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}><Text style={section}>ACTIVIDAD RECIENTE</Text><Pressable onPress={() => router.push('/history')} style={{ paddingVertical: 12 }}><Text style={{ color: t.primary }}>Ver historial →</Text></Pressable></View>
-    </View>}
-    ListEmptyComponent={<View style={card}><Text style={{ color: t.secondary }}>{loading ? 'Cargando ventas…' : error ? 'No se pudo consultar la actividad.' : 'Todavía no hay ventas registradas.'}</Text></View>}
-    renderItem={({item}) => <Pressable onPress={() => router.push('/history')} style={[card, { marginBottom: 12 }]}><Text style={{ color: t.text, fontWeight: '700' }}>Orden #{item.numeroOrden}</Text><Text style={{ color: t.secondary }}>{new Date(item.createdAt).toLocaleString('es-DO')}</Text><Text style={{ color: t.primary, fontWeight: '700' }}>{money(item.subtotal)}</Text></Pressable>}
-  />;
+    </View>
+  </ScrollView>;
 }

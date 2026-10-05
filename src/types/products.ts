@@ -10,7 +10,13 @@ export type Producto = {
   equivalenciaPaquete?: number;
   imagen: string;
   unidadStock?: UnidadStock;
+  /** Optional API integration: only remaining stock in each dated lot. */
+  lotes?: LoteProducto[];
 };
+
+export type LoteProducto = { _id?: string; cantidadDisponible: number; fechaVencimiento: string };
+export type LoteInicial = { cantidad: number; fechaVencimiento: string };
+export type NuevoProductoPayload = Pick<Producto, 'nombre' | 'precios' | 'stock' | 'unidadStock' | 'imagen'> & { lotesIniciales?: LoteInicial[] };
 
  export type Precio = {
   tipo: TipoMedida;

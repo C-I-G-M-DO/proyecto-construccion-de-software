@@ -1,8 +1,10 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { useSurtioTheme } from '@/hooks/use-surtio-theme';
 
 export default function AppTabs() {
+  const theme = useSurtioTheme();
   return (
-    <NativeTabs tintColor="#C00000">
+    <NativeTabs tintColor={theme.primary}>
       <NativeTabs.Trigger name="home">
         <NativeTabs.Trigger.Icon
           sf={{
@@ -34,9 +36,9 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf={{ default: 'shippingbox', selected: 'shippingbox.fill' }} md="local_shipping" />
         <NativeTabs.Trigger.Label>Despacho</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="reports">
-        <NativeTabs.Trigger.Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} md="bar_chart" />
-        <NativeTabs.Trigger.Label>Reportes</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="alerts">
+        <NativeTabs.Trigger.Icon sf={{ default: 'bell', selected: 'bell.fill' }} md="notifications" />
+        <NativeTabs.Trigger.Label>Alertas</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile">
         <NativeTabs.Trigger.Icon sf={{ default: 'person', selected: 'person.fill' }} md="person" />

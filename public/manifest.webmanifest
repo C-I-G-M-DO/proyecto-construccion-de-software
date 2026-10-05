@@ -1,0 +1,11 @@
+{
+  "name": "Surtío",
+  "short_name": "Surtío",
+  "lang": "es-DO",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#C00000",
+  "background_color": "#30251D",
+  "icons": [{ "src": "/surtio-icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }]
+}

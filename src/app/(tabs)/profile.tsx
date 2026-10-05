@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSurtioTheme } from '@/hooks/use-surtio-theme';
 import { useCart } from '@/context/cart_context';
 import { useProducts } from '@/context/product_context';
+import { disableNotifications } from '@/services/notifications';
 
 type User = { name?: string; phone?: string; businessName?: string };
 export default function ProfileScreen() {
@@ -29,6 +30,7 @@ export default function ProfileScreen() {
     if (leaving) return;
     setLeaving(true);
     try {
+      await disableNotifications();
       await AsyncStorage.multiRemove(['token', 'surtio.user', 'nombreColmado']);
       vaciarCarrito(); setProductos([]);
       router.replace('/login');

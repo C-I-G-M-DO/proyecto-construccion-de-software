@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSurtioTheme } from '@/hooks/use-surtio-theme';
-import { Precio } from '@/types/products';
+import { Precio, type NuevoProductoPayload } from '@/types/products';
+import DatePicker from '@/components/ui/date-picker';
+import { initialLots } from '@/utils/expiry';
 import { MEDIDAS, nombreMedida, UnidadStock } from '@/constants/measures';
 
 type ProductImage = { public_id: string; url: string };
@@ -20,6 +22,8 @@ export default function AddProductScreen() {
   const [showMedidas, setShowMedidas] = useState(false);
   const [equivalencia, setEquivalencia] = useState('');
   const [stock, setStock] = useState('');
+  const [vence, setVence] = useState(false);
+  const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [imagen, setImagen] = useState('');
   const [imagenes, setImagenes] = useState<ProductImage[]>([]);
   const [showImages, setShowImages] = useState(false);
@@ -74,16 +78,20 @@ export default function AddProductScreen() {
     if (valor.trim()) { Alert.alert('Precio sin agregar', 'Pulsa Agregar precio o borra el precio pendiente antes de guardar.'); return; }
     savingRef.current = true; setSaving(true);
     try {
+      const lotesIniciales = initialLots(vence, fechaVencimiento, number(stock));
+      const payload: NuevoProductoPayload = { nombre: nombre.trim(), precios, stock: number(stock), unidadStock, imagen, ...(lotesIniciales ? { lotesIniciales } : {}) };
       if (!api) throw new Error('Falta configurar la dirección del backend.');
       const token = await AsyncStorage.getItem('token');
       if (!token) throw new Error('Inicia sesión para guardar el producto.');
       const res = await fetch(`${api}/api/products`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ nombre: nombre.trim(), precios, stock: number(stock), unidadStock, imagen }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.message || 'No se pudo guardar el producto.');
-      Alert.alert('Producto guardado', 'El producto ya forma parte de tu catálogo.'); back();
+      const product = data?.producto ?? data;
+      const expiryConfirmed = !vence || (Array.isArray(product?.lotes) && product.lotes.some((lot: { fechaVencimiento?: string; cantidadDisponible?: number } | null) => lot?.fechaVencimiento === fechaVencimiento && lot?.cantidadDisponible === number(stock)));
+      Alert.alert('Producto guardado', expiryConfirmed ? 'El producto ya forma parte de tu catálogo.' : 'El producto se guardó, pero no se confirmó su fecha de vencimiento. Aún no aparecerá en las alertas.', [{ text: 'Aceptar', onPress: back }]);
     } catch (error) { Alert.alert('No se pudo guardar', error instanceof Error ? error.message : 'Revisa la conexión e inténtalo de nuevo.'); }
     finally { setSaving(false); savingRef.current = false; }
   }
@@ -117,6 +125,10 @@ export default function AddProductScreen() {
           {precios.map(p => <View key={p.tipo} style={{ flexDirection: 'row', gap: 8, alignItems: 'center', borderTopWidth: 1, borderTopColor: t.border, paddingTop: 10 }}><View style={{ flex: 1 }}><Text style={{ color: t.text }}>{nombreMedida(p.tipo)} · RD$ {p.valor.toFixed(2)}</Text>{p.tipo === 'paquete' && <Text style={muted}>{p.equivalencia} unidades por paquete</Text>}</View><Pressable accessibilityLabel={`Quitar precio por ${p.tipo}`} onPress={() => setPrecios(current => current.filter(price => price.tipo !== p.tipo))} style={{ padding: 12 }}><Text style={{ color: t.primary }}>Quitar</Text></Pressable></View>)}
         </View>
         <View style={card}><Text style={label}>Existencias iniciales</Text><Text style={muted}>Cantidad disponible en {unidadStock === 'libra' ? 'libras' : 'unidades'}.</Text><TextInput accessibilityLabel="Existencias iniciales" value={stock} onChangeText={setStock} keyboardType="decimal-pad" placeholder="Ej. 20" placeholderTextColor={t.secondary} style={input} /></View>
+        <View style={card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><Text style={[label, { flex: 1 }]}>Este producto vence</Text><Switch accessibilityLabel="Este producto vence" value={vence} onValueChange={setVence} trackColor={{ false: t.border, true: t.button }} thumbColor="#FFFFFF" /></View>
+          {vence && <><DatePicker label="Fecha de vencimiento" value={fechaVencimiento} onChange={setFechaVencimiento} /><Text style={muted}>La fecha aplica a las {stock || '0'} {unidadStock === 'libra' ? 'libras' : 'unidades'} que estás registrando. Registra juntos solo productos con el mismo vencimiento.</Text></>}
+        </View>
         <Pressable onPress={guardar} disabled={saving} accessibilityRole="button" accessibilityState={{ disabled: saving }} style={{ backgroundColor: t.button, opacity: saving ? 0.6 : 1, padding: 18, minHeight: 54, borderRadius: 14, alignItems: 'center' }}><Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 16 }}>{saving ? 'Guardando…' : 'Guardar producto'}</Text></Pressable>
       </ScrollView>
     </KeyboardAvoidingView>

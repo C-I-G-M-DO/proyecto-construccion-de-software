@@ -1,4 +1,6 @@
 import { useSurtioTheme, useSurtioStyles } from '@/hooks/use-surtio-theme';
+import { BrandMark } from '@/components/business-ui';
+import { useResponsiveDimensions } from '@/hooks/use-responsive-dimensions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -9,7 +11,6 @@ import {
   ScrollView,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -33,18 +34,18 @@ const AREA_CODES: AreaCode[] = ['809', '829', '849'];
 const FEATURES: FeatureCardProps[] = [
   {
     icon: '▣',
-    title: 'Inventario y stock',
-    description: 'Alertas de existencias y pedidos a distribuidores.',
+    title: 'Resumen del negocio',
+    description: 'Ventas de hoy y productos registrados.',
   },
   {
     icon: '▤',
-    title: 'Cuentas de fiao',
-    description: 'Control de deudas de clientes con historial claro.',
+    title: 'Historial de órdenes',
+    description: 'Consulta tus ventas por período, producto y monto.',
   },
   {
     icon: '$',
-    title: 'Cuadre de caja',
-    description: 'Ventas del día en efectivo, transferencias y tarjetas.',
+    title: 'Reportes de ventas',
+    description: 'Elige fechas y descarga reportes para tu negocio.',
   },
   {
     icon: '✓',
@@ -70,13 +71,7 @@ function formatLocalPhone(value: string) {
 }
 
 function BrandLogo() {
-  const styles = useSurtioStyles(baseStyles);
-  return (
-    <View style={styles.logo}>
-      <Text style={styles.logoLetter}>S</Text>
-      <View style={styles.logoDot} />
-    </View>
-  );
+  return <BrandMark size={48} />;
 }
 
 function FeatureCard({
@@ -104,7 +99,7 @@ function FeatureCard({
 export default function LoginWebScreen() {
   const theme = useSurtioTheme();
   const styles = useSurtioStyles(baseStyles);
-  const { width } = useWindowDimensions();
+  const { width } = useResponsiveDimensions();
 
   const compact = width < 1050;
   const hideHeaderDetails = width < 760;
@@ -265,9 +260,9 @@ export default function LoginWebScreen() {
 
                 <Text style={styles.heroDescription}>
                   Inicia sesión desde cualquier computadora o
-                  tableta para administrar inventario, registrar
-                  ventas de mostrador y llevar al día tus cuentas
-                  de fiao.
+                  tableta para consultar tus ventas, revisar el
+                  historial de órdenes y descargar reportes de
+                  tu negocio.
                 </Text>
               </View>
 
