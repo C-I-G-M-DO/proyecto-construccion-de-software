@@ -38,8 +38,6 @@ export type Orden = {
 };
 
 export type DespacharOrdenPayload = {
-  clienteId?: string | null;
-  puntosCanjeados?: number;
   metodoPago: MetodoPago;
 };
 

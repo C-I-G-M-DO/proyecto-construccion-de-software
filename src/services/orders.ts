@@ -52,6 +52,13 @@ async function ordersRequest<T>(
   return data as T;
 }
 
+/**
+ * Crea una orden pendiente.
+ *
+ * IMPORTANTE:
+ * Aquí NO se descuenta inventario.
+ * El stock se descuenta únicamente al despachar.
+ */
 export async function crearOrden(
   items: CartItem[],
   clientRequestId: string,
@@ -89,6 +96,9 @@ export async function crearOrden(
   return data;
 }
 
+/**
+ * Obtiene las órdenes que están esperando despacho.
+ */
 export async function obtenerOrdenesPendientes(
   signal?: AbortSignal,
 ): Promise<Orden[]> {
@@ -109,6 +119,21 @@ export async function obtenerOrdenesPendientes(
   return data;
 }
 
+/**
+ * Despacha una orden.
+ *
+ * Aquí se confirma el método de pago.
+ * El backend se encarga de:
+ *
+ * 1. Verificar la orden.
+ * 2. Verificar el cliente y los puntos.
+ * 3. Verificar el stock.
+ * 4. Descontar stock.
+ * 5. Aplicar FEFO si corresponde.
+ * 6. Crear la venta.
+ * 7. Actualizar los puntos del cliente.
+ * 8. Marcar la orden como despachada.
+ */
 export async function despacharOrden(
   id: string,
   payload: DespacharOrdenPayload,
@@ -119,10 +144,6 @@ export async function despacharOrden(
       method: "POST",
 
       body: JSON.stringify({
-        clienteId: payload.clienteId || null,
-
-        puntosCanjeados: payload.puntosCanjeados || 0,
-
         metodoPago: payload.metodoPago,
       }),
     },

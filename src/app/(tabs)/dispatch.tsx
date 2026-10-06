@@ -146,11 +146,19 @@ export default function DispatchScreen() {
       setSending(true);
 
       try {
+        /*
+         * IMPORTANTE:
+         *
+         * La orden ya contiene:
+         * - clienteId
+         * - clienteNombre
+         * - telefonoCliente
+         * - puntosCanjeados
+         *
+         * Por eso, al despachar solamente enviamos
+         * el método de pago.
+         */
         const resultado = await despacharOrden(seleccionada._id, {
-          clienteId: seleccionada.clienteId || null,
-
-          puntosCanjeados: seleccionada.puntosCanjeados || 0,
-
           metodoPago,
         });
 
@@ -185,8 +193,10 @@ export default function DispatchScreen() {
           Alert.alert("No se pudo despachar", detalle);
         }
 
-        // Volvemos a consultar por si
-        // otro empleado ya despachó la orden.
+        /*
+         * Volvemos a consultar por si otro empleado
+         * ya despachó la orden o cambió el stock.
+         */
         void cargar();
       } finally {
         setSending(false);
@@ -339,7 +349,6 @@ export default function DispatchScreen() {
             accessibilityRole="button"
             onPress={() => {
               setSeleccionada(item);
-
               setMetodoPago("efectivo");
             }}
             style={card}
