@@ -107,10 +107,18 @@ export default function EditProductScreen() {
     }
 
     try {
-      const preciosActualizados = precios.map(({ input, ...price }) => ({
-        ...price,
-        valor: money(input),
-      }));
+      const preciosActualizados = precios.map(
+        ({ input, equivalencia, ...price }) => ({
+          ...price,
+          valor: money(input),
+
+          ...(price.tipo === "paquete" &&
+          equivalencia !== undefined &&
+          equivalencia !== null
+            ? { equivalencia }
+            : {}),
+        }),
+      );
 
       await actualizarPrecios(params.id, preciosActualizados);
 
