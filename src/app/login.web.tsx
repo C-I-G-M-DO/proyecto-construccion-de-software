@@ -56,10 +56,6 @@ const FEATURES: FeatureCardProps[] = [
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
-if (!API_URL) {
-  throw new Error('Falta EXPO_PUBLIC_API_URL en el archivo .env');
-}
-
 function formatLocalPhone(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 7);
 
@@ -141,6 +137,7 @@ export default function LoginWebScreen() {
   setSubmitting(true);
 
   try {
+    if (!API_URL) throw new Error('Falta EXPO_PUBLIC_API_URL en el archivo .env');
     const localDigits = phone.replace(/\D/g, '');
 
     const fullPhone = `+1${areaCode}${localDigits}`;

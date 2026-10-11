@@ -17,6 +17,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useProducts } from "../context/product_context";
 import { Precio } from "../types/products";
 import { MEDIDAS, nombreMedida } from '@/constants/measures';
+import { CategoryPicker } from '@/components/product-category-controls';
+import type { ProductCategory } from '@/constants/product-categories';
+import { productCategory } from '@/utils/product-categories';
+import { saveProductCategory } from '@/services/product-categories';
 
 const RED = "#C00000";
 const money = (value: string) => Number(value.replace(",", "."));
@@ -39,6 +43,7 @@ export default function EditProductScreen() {
     actualizarPrecios,
   } = useProducts();
   const producto = productos.find((item) => item._id === params.id);
+  const [category, setCategory] = useState<ProductCategory>(() => productCategory(producto ?? { nombre: params.nombre ?? '' }));
   const [precios, setPrecios] = useState(() => {
     let source: Precio[] = producto?.precios ?? [];
     if (!source.length) {
@@ -89,6 +94,10 @@ export default function EditProductScreen() {
       }));
 
       await actualizarPrecios(params.id, preciosActualizados);
+      try {
+        await saveProductCategory(params.id, category);
+        setProductos(current => current.map(item => item._id === params.id ? { ...item, categoria: category } : item));
+      } catch { Alert.alert('Precios actualizados', 'Los precios se guardaron, pero no se pudo conservar la categoría en el dispositivo.'); return; }
 
       Alert.alert(
         "Precios actualizados",
@@ -189,6 +198,8 @@ export default function EditProductScreen() {
               {producto?.nombre ?? params.nombre ?? "Producto"}
             </Text>
             <Text style={s.muted}>Nombre de referencia</Text>
+            <CategoryPicker value={category} onChange={setCategory} />
+            <Text style={s.muted}>La categoría se conserva en este dispositivo.</Text>
           </View>
 
           <View style={s.card}>

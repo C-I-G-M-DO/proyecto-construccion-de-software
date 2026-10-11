@@ -10,6 +10,8 @@ export type Producto = {
   equivalenciaPaquete?: number;
   imagen: string;
   unidadStock?: UnidadStock;
+  /** API field when supported; otherwise an account-local category choice. */
+  categoria?: string;
   /** Optional API integration: only remaining stock in each dated lot. */
   lotes?: LoteProducto[];
 };

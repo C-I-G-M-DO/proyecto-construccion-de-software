@@ -4,7 +4,10 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { startupStyles as styles } from '@/styles/startup.styles';
 
-const scene = require('../../assets/images/surtio-splash.png');
+const scene = Platform.select({
+  web: { uri: '/surtio-splash-web.png' },
+  default: require('../../assets/images/surtio-splash.png'),
+});
 
 type Props = {
   ready: boolean;

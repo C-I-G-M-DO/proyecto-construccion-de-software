@@ -22,6 +22,9 @@ import {
 import { useCart } from "../context/cart_context";
 import { useProducts } from "../context/product_context";
 import { nombreMedida } from '@/constants/measures';
+import { ProductCategoryFilter } from '@/components/product-category-controls';
+import type { ProductCategory } from '@/constants/product-categories';
+import { filterProducts } from '@/utils/product-categories';
 
 const SCREEN_PADDING = 16;
 const CARD_GAP = 12;
@@ -37,6 +40,7 @@ export default function HomeScreen() {
   const { width: screenWidth } = useWindowDimensions();
 
   const [search, setSearch] = useState("");
+  const [category, setCategory] = useState<ProductCategory | 'todos'>('todos');
   const [showTipoModal, setShowTipoModal] = useState(false);
   const [productoSeleccionado, setProductoSeleccionado] = useState<any>(null);
 
@@ -53,19 +57,7 @@ export default function HomeScreen() {
     [carrito],
   );
 
-  const productosFiltrados = useMemo(() => {
-    const busqueda = search.trim().toLowerCase();
-
-    if (!busqueda) {
-      return productos;
-    }
-
-    return productos.filter((item: any) =>
-      String(item.nombre ?? "")
-        .toLowerCase()
-        .includes(busqueda),
-    );
-  }, [productos, search]);
+  const productosFiltrados = useMemo(() => filterProducts(productos, category, search), [productos, category, search]);
 
   useFocusEffect(
     useCallback(() => {
@@ -172,6 +164,7 @@ export default function HomeScreen() {
         />
       </View>
 
+      <View style={{ margin: 16, gap: 8 }}><ProductCategoryFilter products={productos} value={category} onChange={setCategory} /><Text style={{ color: theme.secondary, fontSize: 12 }}>{productosFiltrados.length} productos encontrados</Text>{(category !== 'todos' || search) && <Pressable accessibilityRole="button" onPress={() => { setCategory('todos'); setSearch(''); }} style={{ minHeight: 36, justifyContent: 'center' }}><Text style={{ color: primary }}>Limpiar filtros</Text></Pressable>}</View>
       <FlatList
         columnWrapperStyle={styles.productRow}
         contentContainerStyle={[
@@ -195,10 +188,10 @@ export default function HomeScreen() {
               <Entypo name="box" size={28} color={text} />
             </View>
             <Text style={[styles.emptyTitle, { color: text }]}>
-              {search ? "No encontramos productos" : "No hay productos"}
+              {search || category !== 'todos' ? "No encontramos productos" : "No hay productos"}
             </Text>
             <Text style={[styles.emptyDescription, { color: text }]}>
-              {search
+              {search || category !== 'todos'
                 ? "Prueba con otro nombre o limpia la búsqueda."
                 : "Agrega el primer producto para comenzar tu inventario."}
             </Text>

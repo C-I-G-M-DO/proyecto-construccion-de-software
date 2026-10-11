@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { createContext, useContext, useState } from "react";
 import { Precio, Producto } from "../types/products";
 import { consumoEnStock, TipoMedida } from '@/constants/measures';
+import { applyStoredCategories } from '@/services/product-categories';
 
 type ProductContextType = {
   productos: Producto[];
@@ -30,12 +31,9 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   //  URL BASE
   const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
-  if (!API_URL) {
-    throw new Error("Falta EXPO_PUBLIC_API_URL en el archivo .env");
-  }
-
   //  FETCH CON AUTH AUTOMÁTICO
   const fetchWithAuth = async (url: string, options: any = {}) => {
+    if (!API_URL) throw new Error("Falta EXPO_PUBLIC_API_URL en el archivo .env");
     const token = await AsyncStorage.getItem("token");
 
     const res = await fetch(url, {
@@ -73,7 +71,7 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      setProductos(data);
+      setProductos(await applyStoredCategories(data));
     } catch (error) {
       console.log("Error cargando productos:", error);
     }

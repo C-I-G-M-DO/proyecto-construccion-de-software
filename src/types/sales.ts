@@ -6,7 +6,7 @@ export type Venta = {
   estado?: string;
   metodoPago?: string;
   createdAt: string;
-  items?: { productoId?: string; nombre: string; cantidad: number; precio: number; tipo: string }[];
+  items?: { productoId?: string; nombre: string; cantidad: number; precio: number; tipo: string; equivalencia?: number; unidadesStockConsumidas?: number }[];
 };
 
 export type HistoryFilters = {

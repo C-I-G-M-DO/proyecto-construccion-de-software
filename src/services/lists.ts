@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { applyStoredCategories } from './product-categories';
+import type { Producto } from '@/types/products';
 
 /** Read an authenticated collection using the existing backend routes. */
 export async function fetchList<T>(resource: 'sales' | 'products', signal?: AbortSignal): Promise<T[]> {
@@ -13,5 +15,5 @@ export async function fetchList<T>(resource: 'sales' | 'products', signal?: Abor
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.message || `No se pudieron consultar los datos (HTTP ${response.status}).`);
   if (!Array.isArray(data)) throw new Error('El servidor devolvió un formato inesperado.');
-  return data;
+  return resource === 'products' ? await applyStoredCategories(data as Producto[]) as T[] : data;
 }

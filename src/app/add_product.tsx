@@ -23,6 +23,9 @@ import { MEDIDAS, nombreMedida, UnidadStock } from "@/constants/measures";
 import { useSurtioTheme } from "@/hooks/use-surtio-theme";
 import { Precio, type NuevoProductoPayload } from "@/types/products";
 import { initialLots } from "@/utils/expiry";
+import { CategoryPicker } from '@/components/product-category-controls';
+import type { ProductCategory } from '@/constants/product-categories';
+import { saveProductCategory } from '@/services/product-categories';
 
 type ProductImage = {
   public_id: string;
@@ -427,6 +430,7 @@ export default function AddProductScreen() {
   const router = useRouter();
 
   const [nombre, setNombre] = useState("");
+  const [category, setCategory] = useState<ProductCategory>('otros');
 
   const [precios, setPrecios] = useState<Precio[]>([]);
 
@@ -745,6 +749,11 @@ export default function AddProductScreen() {
       }
 
       const product = data?.producto ?? data;
+      let categorySaved = false;
+      if (typeof product?._id === 'string') {
+        try { await saveProductCategory(product._id, category); categorySaved = true; }
+        catch { /* The product was saved; category storage must not retry its creation. */ }
+      }
 
       /*
        * Confirmamos la fecha utilizando solamente
@@ -800,8 +809,8 @@ export default function AddProductScreen() {
       Alert.alert(
         "Producto guardado",
         vence
-          ? `El producto se guardó correctamente con fecha de vencimiento ${fechaSeleccionada}.`
-          : "El producto ya forma parte de tu catálogo.",
+          ? `El producto se guardó correctamente con fecha de vencimiento ${fechaSeleccionada}.${categorySaved ? '' : ' No se pudo conservar la categoría en el dispositivo.'}`
+          : `El producto ya forma parte de tu catálogo.${categorySaved ? '' : ' No se pudo conservar la categoría en el dispositivo.'}`,
         [
           {
             text: "Aceptar",
@@ -931,6 +940,9 @@ export default function AddProductScreen() {
               placeholderTextColor={t.secondary}
               style={input}
             />
+
+            <CategoryPicker value={category} onChange={setCategory} />
+            <Text style={muted}>La categoría se conserva en este dispositivo.</Text>
 
             <Pressable
               onPress={cargarImagenes}
