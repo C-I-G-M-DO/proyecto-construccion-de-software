@@ -8,7 +8,7 @@ import type {
   Orden,
 } from "@/types/orders";
 
-const base = process.env.EXPO_PUBLIC_API_URL?.replace(/\/*$/, "");
+const base = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, "");
 
 async function ordersRequest<T>(
   path: string,
@@ -26,7 +26,6 @@ async function ordersRequest<T>(
 
   const response = await fetch(`${base}/api/orders${path}`, {
     ...options,
-
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
@@ -39,7 +38,7 @@ async function ordersRequest<T>(
   if (!response.ok) {
     if (response.status === 404 || response.status === 501) {
       throw new Error(
-        "El backend aún no tiene habilitado el módulo de órdenes.",
+        "El backend aún no tiene habilitada esta operación de órdenes.",
       );
     }
 
@@ -67,18 +66,14 @@ export async function crearOrden(
 ): Promise<Orden> {
   const data = await ordersRequest<Orden>("", {
     method: "POST",
-
     body: JSON.stringify({
       clientRequestId,
-
       items: items.map(({ productoId, tipo, cantidad }) => ({
         productoId,
         tipo,
         cantidad,
       })),
-
       clienteId: clienteId || null,
-
       puntosCanjeados: Number(puntosCanjeados) || 0,
     }),
   });
@@ -122,9 +117,7 @@ export async function obtenerOrdenesPendientes(
 /**
  * Despacha una orden.
  *
- * Aquí se confirma el método de pago.
  * El backend se encarga de:
- *
  * 1. Verificar la orden.
  * 2. Verificar el cliente y los puntos.
  * 3. Verificar el stock.
@@ -142,7 +135,6 @@ export async function despacharOrden(
     `/${encodeURIComponent(id)}/dispatch`,
     {
       method: "POST",
-
       body: JSON.stringify({
         metodoPago: payload.metodoPago,
       }),
@@ -156,4 +148,24 @@ export async function despacharOrden(
   }
 
   return data;
+}
+
+/**
+ * Elimina una orden pendiente.
+ *
+ * IMPORTANTE:
+ * El backend debe comprobar que la orden sigue pendiente.
+ * Esta operación no debe crear ventas ni descontar inventario.
+ *
+ * Endpoint esperado:
+ * DELETE /api/orders/:id
+ */
+export async function eliminarOrden(id: string): Promise<void> {
+  if (!id.trim()) {
+    throw new Error("No se recibió el identificador de la orden.");
+  }
+
+  await ordersRequest<unknown>(`/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }

@@ -1,4 +1,10 @@
+import { CategoryPicker } from "@/components/product-category-controls";
+import DatePicker from "@/components/ui/date-picker";
+import { MEDIDAS, nombreMedida } from "@/constants/measures";
+import type { ProductCategory } from "@/constants/product-categories";
 import { useSurtioStyles, useSurtioTheme } from "@/hooks/use-surtio-theme";
+import { saveProductCategory } from "@/services/product-categories";
+import { productCategory } from "@/utils/product-categories";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -15,26 +21,24 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useProducts } from "../context/product_context";
-import { Precio } from "../types/products";
-import { MEDIDAS, nombreMedida } from '@/constants/measures';
-import { CategoryPicker } from '@/components/product-category-controls';
-import type { ProductCategory } from '@/constants/product-categories';
-import { productCategory } from '@/utils/product-categories';
-import { saveProductCategory } from '@/services/product-categories';
+import type { Precio } from "../types/products";
 
 const RED = "#C00000";
+
 const money = (value: string) => Number(value.replace(",", "."));
 
 export default function EditProductScreen() {
   const theme = useSurtioTheme();
   const s = useSurtioStyles(baseStyles);
   const router = useRouter();
+
   const params = useLocalSearchParams<{
     id: string;
     nombre: string;
     cantidad: string;
     precios: string;
   }>();
+
   const {
     productos,
     setProductos,
@@ -42,32 +46,47 @@ export default function EditProductScreen() {
     eliminarProducto,
     actualizarPrecios,
   } = useProducts();
+
   const producto = productos.find((item) => item._id === params.id);
-  const [category, setCategory] = useState<ProductCategory>(() => productCategory(producto ?? { nombre: params.nombre ?? '' }));
+
+  const [category, setCategory] = useState<ProductCategory>(() =>
+    productCategory(producto ?? { nombre: params.nombre ?? "" }),
+  );
+
   const [precios, setPrecios] = useState(() => {
     let source: Precio[] = producto?.precios ?? [];
+
     if (!source.length) {
       try {
         const parsed = JSON.parse(params.precios ?? "[]");
         if (Array.isArray(parsed)) source = parsed;
       } catch {
-        /* Keep an empty form when route data is invalid. */
+        // Mantener el formulario vacío si los datos de ruta no son válidos.
       }
     }
+
     return source.map((price) => ({
       ...price,
       input: String(price.valor ?? ""),
     }));
   });
+
   const [modal, setModal] = useState<"stock" | "delete" | null>(null);
   const [cantidadStock, setCantidadStock] = useState("");
+  const [fechaVencimiento, setFechaVencimiento] = useState("");
   const [password, setPassword] = useState("");
   const [tipoStock, setTipoStock] = useState<Precio["tipo"]>("unidad");
+  const [guardandoStock, setGuardandoStock] = useState(false);
+
   const close = () => {
+    if (guardandoStock) return;
+
     setModal(null);
     setPassword("");
     setCantidadStock("");
+    setFechaVencimiento("");
   };
+
   const back = () =>
     router.canGoBack() ? router.back() : router.replace("/home");
 
@@ -94,22 +113,29 @@ export default function EditProductScreen() {
       }));
 
       await actualizarPrecios(params.id, preciosActualizados);
+
       try {
         await saveProductCategory(params.id, category);
-        setProductos(current => current.map(item => item._id === params.id ? { ...item, categoria: category } : item));
-      } catch { Alert.alert('Precios actualizados', 'Los precios se guardaron, pero no se pudo conservar la categoría en el dispositivo.'); return; }
+
+        setProductos((current) =>
+          current.map((item) =>
+            item._id === params.id ? { ...item, categoria: category } : item,
+          ),
+        );
+      } catch {
+        Alert.alert(
+          "Precios actualizados",
+          "Los precios se guardaron, pero no se pudo conservar la categoría en el dispositivo.",
+        );
+        return;
+      }
 
       Alert.alert(
         "Precios actualizados",
         "Los precios se guardaron correctamente.",
-        [
-          {
-            text: "OK",
-            onPress: back,
-          },
-        ],
+        [{ text: "OK", onPress: back }],
       );
-    } catch (error) {
+    } catch {
       Alert.alert(
         "Error",
         "No se pudieron guardar los precios. Intenta nuevamente.",
@@ -117,7 +143,47 @@ export default function EditProductScreen() {
     }
   }
 
+  function validarFechaVencimiento(fechaTexto: string): boolean {
+    const fecha = fechaTexto.trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      Alert.alert(
+        "Fecha requerida",
+        "Selecciona una fecha de vencimiento válida.",
+      );
+      return false;
+    }
+
+    const [anio, mes, dia] = fecha.split("-").map(Number);
+    const fechaComprobada = new Date(anio, mes - 1, dia);
+
+    const fechaValida =
+      fechaComprobada.getFullYear() === anio &&
+      fechaComprobada.getMonth() === mes - 1 &&
+      fechaComprobada.getDate() === dia;
+
+    if (!fechaValida) {
+      Alert.alert("Fecha inválida", "Comprueba el día, el mes y el año.");
+      return false;
+    }
+
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    if (fechaComprobada < hoy) {
+      Alert.alert(
+        "Fecha vencida",
+        "La fecha del lote nuevo no puede estar en el pasado.",
+      );
+      return false;
+    }
+
+    return true;
+  }
+
   async function confirmarStock() {
+    if (guardandoStock) return;
+
     const quantity = money(cantidadStock);
 
     if (!cantidadStock.trim() || !Number.isFinite(quantity) || quantity <= 0) {
@@ -125,20 +191,53 @@ export default function EditProductScreen() {
       return;
     }
 
-    try {
-      await reponerStock(params.id, quantity, tipoStock);
+    if (
+      producto?.unidadStock === "unidad" &&
+      !Number.isInteger(quantity) &&
+      (tipoStock === "unidad" || tipoStock === "docena")
+    ) {
+      Alert.alert(
+        "Cantidad inválida",
+        "Para esta presentación, introduce una cantidad entera.",
+      );
+      return;
+    }
 
-      close();
+    if (producto?.vence && !validarFechaVencimiento(fechaVencimiento)) {
+      return;
+    }
+
+    setGuardandoStock(true);
+
+    try {
+      await reponerStock(
+        params.id,
+        quantity,
+        tipoStock,
+        undefined,
+        producto?.vence ? fechaVencimiento.trim() : undefined,
+      );
+
+      setModal(null);
+      setPassword("");
+      setCantidadStock("");
+      setFechaVencimiento("");
 
       Alert.alert(
         "Stock actualizado",
-        "El inventario se actualizó correctamente.",
+        producto?.vence
+          ? "El inventario aumentó y se registró un lote nuevo con su fecha de vencimiento."
+          : "El inventario se actualizó correctamente.",
       );
     } catch (error) {
       Alert.alert(
         "Error",
-        "No se pudo actualizar el stock. Intenta nuevamente.",
+        error instanceof Error
+          ? error.message
+          : "No se pudo actualizar el stock. Intenta nuevamente.",
       );
+    } finally {
+      setGuardandoStock(false);
     }
   }
 
@@ -150,26 +249,29 @@ export default function EditProductScreen() {
 
     try {
       await eliminarProducto(params.id);
-
-      close();
+      setModal(null);
+      setPassword("");
 
       Alert.alert(
         "Producto eliminado",
         "El producto se eliminó correctamente.",
-        [
-          {
-            text: "OK",
-            onPress: back,
-          },
-        ],
+        [{ text: "OK", onPress: back }],
       );
-    } catch (error) {
+    } catch {
       Alert.alert(
         "Error",
         "No se pudo eliminar el producto. Intenta nuevamente.",
       );
     }
   }
+
+  const medidasDisponibles = MEDIDAS.filter((m) =>
+    !producto?.unidadStock
+      ? ["unidad", "libra", "paquete"].includes(m.tipo)
+      : m.unidadStock === producto.unidadStock &&
+        (m.tipo === producto.unidadStock ||
+          producto.precios.some((p) => p.tipo === m.tipo)),
+  );
 
   return (
     <SafeAreaView style={s.screen}>
@@ -186,6 +288,7 @@ export default function EditProductScreen() {
           <Pressable onPress={back} accessibilityRole="button" style={s.back}>
             <Text style={s.link}>← Volver</Text>
           </Pressable>
+
           <Text style={s.eyebrow}>INVENTARIO / PRODUCTO</Text>
           <Text style={s.title}>Editar producto</Text>
           <Text style={s.subtitle}>
@@ -194,24 +297,34 @@ export default function EditProductScreen() {
 
           <View style={s.card}>
             <Text style={s.label}>NOMBRE DEL PRODUCTO</Text>
+
             <Text selectable style={s.productName}>
               {producto?.nombre ?? params.nombre ?? "Producto"}
             </Text>
+
             <Text style={s.muted}>Nombre de referencia</Text>
+
             <CategoryPicker value={category} onChange={setCategory} />
-            <Text style={s.muted}>La categoría se conserva en este dispositivo.</Text>
+
+            <Text style={s.muted}>
+              La categoría se conserva en este dispositivo.
+            </Text>
           </View>
 
           <View style={s.card}>
             <Text style={s.sectionTitle}>Precios de venta</Text>
+
             <Text style={s.muted}>
               Precio por modalidad, en pesos dominicanos.
             </Text>
+
             {precios.map((price, index) => (
               <View key={`${price.tipo}-${index}`} style={{ gap: 8 }}>
                 <Text style={s.label}>{price.tipo.toUpperCase()}</Text>
+
                 <View style={s.inputRow}>
                   <Text style={s.currency}>RD$</Text>
+
                   <TextInput
                     accessibilityLabel={`Precio por ${price.tipo}`}
                     value={price.input}
@@ -230,6 +343,7 @@ export default function EditProductScreen() {
                 </View>
               </View>
             ))}
+
             {precios.length === 0 && (
               <Text style={s.muted}>
                 Este producto no tiene precios disponibles.
@@ -239,13 +353,31 @@ export default function EditProductScreen() {
 
           <View style={s.card}>
             <Text style={s.sectionTitle}>Existencias</Text>
+
             <Text selectable style={s.stock}>
-              {producto?.stock ?? params.cantidad ?? "—"} {producto?.unidadStock === 'libra' ? 'lb' : 'unid.'}
+              {producto?.stock ?? params.cantidad ?? "—"}{" "}
+              {producto?.unidadStock === "libra" ? "lb" : "unid."}
             </Text>
+
             <Text style={s.muted}>Stock disponible</Text>
+
+            {producto?.vence && (
+              <Text style={s.muted}>
+                Este producto controla vencimientos. Cada reposición creará un
+                lote independiente.
+              </Text>
+            )}
+
             <Pressable
               accessibilityRole="button"
-              onPress={() => { setTipoStock(producto?.unidadStock === 'libra' ? 'libra' : 'unidad'); setModal("stock"); }}
+              onPress={() => {
+                setTipoStock(
+                  producto?.unidadStock === "libra" ? "libra" : "unidad",
+                );
+                setCantidadStock("");
+                setFechaVencimiento("");
+                setModal("stock");
+              }}
               style={s.secondary}
             >
               <Text style={s.link}>＋ Reponer stock</Text>
@@ -254,11 +386,12 @@ export default function EditProductScreen() {
 
           <Pressable
             accessibilityRole="button"
-            onPress={guardarCambios}
+            onPress={() => void guardarCambios()}
             style={s.primary}
           >
             <Text style={s.primaryText}>Guardar cambios</Text>
           </Pressable>
+
           <Pressable
             accessibilityRole="button"
             onPress={() => setModal("delete")}
@@ -289,19 +422,31 @@ export default function EditProductScreen() {
                 <Text style={s.sectionTitle}>
                   {modal === "stock" ? "Reponer stock" : "Eliminar de la lista"}
                 </Text>
+
                 <Text style={s.muted}>
                   {modal === "stock"
-                    ? "Indica la cantidad que vas a sumar al inventario local."
-                    : "Esta acción afecta únicamente la lista local. Confirma con la contraseña del prototipo."}
+                    ? "Indica la cantidad que vas a sumar al inventario."
+                    : "Esta acción elimina el producto de la lista. Confirma con la contraseña del prototipo."}
                 </Text>
+
                 {modal === "stock" ? (
                   <>
+                    <Text style={s.label}>PRESENTACIÓN</Text>
+
                     <View
-                      style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                      style={{
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        gap: 8,
+                      }}
                     >
-                      {MEDIDAS.filter(m => !producto?.unidadStock ? ['unidad', 'libra', 'paquete'].includes(m.tipo) : m.unidadStock === producto.unidadStock && (m.tipo === producto.unidadStock || producto.precios.some(p => p.tipo === m.tipo))).map(({ tipo }) => (
+                      {medidasDisponibles.map(({ tipo }) => (
                         <Pressable
                           key={tipo}
+                          accessibilityRole="button"
+                          accessibilityState={{
+                            selected: tipoStock === tipo,
+                          }}
                           onPress={() => setTipoStock(tipo)}
                           style={[
                             s.chip,
@@ -321,6 +466,9 @@ export default function EditProductScreen() {
                         </Pressable>
                       ))}
                     </View>
+
+                    <Text style={s.label}>CANTIDAD A REPONER</Text>
+
                     <TextInput
                       accessibilityLabel="Cantidad a reponer"
                       value={cantidadStock}
@@ -330,29 +478,59 @@ export default function EditProductScreen() {
                       placeholderTextColor="#887571"
                       style={s.input}
                     />
+
+                    {producto?.vence && (
+                      <>
+                        <DatePicker
+                          label="Fecha de vencimiento del lote nuevo"
+                          value={fechaVencimiento}
+                          onChange={setFechaVencimiento}
+                        />
+
+                        <Text style={s.muted}>
+                          {fechaVencimiento
+                            ? `Vencimiento seleccionado: ${fechaVencimiento}. Esta fecha se guardará para el lote nuevo, sin cambiar los lotes anteriores.`
+                            : "Selecciona la fecha de vencimiento utilizando el calendario."}
+                        </Text>
+                      </>
+                    )}
                   </>
                 ) : (
-                  <TextInput
-                    accessibilityLabel="Contraseña de confirmación"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                    placeholder="Contraseña"
-                    placeholderTextColor="#887571"
-                    style={s.input}
-                  />
+                  <>
+                    <Text style={s.label}>CONTRASEÑA DE CONFIRMACIÓN</Text>
+
+                    <TextInput
+                      accessibilityLabel="Contraseña de confirmación"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry
+                      placeholder="Contraseña"
+                      placeholderTextColor="#887571"
+                      style={s.input}
+                    />
+                  </>
                 )}
+
                 <Pressable
                   accessibilityRole="button"
-                  onPress={
-                    modal === "stock" ? confirmarStock : confirmarEliminacion
-                  }
-                  style={s.primary}
+                  disabled={guardandoStock}
+                  onPress={() => {
+                    if (modal === "stock") {
+                      void confirmarStock();
+                    } else {
+                      void confirmarEliminacion();
+                    }
+                  }}
+                  style={[s.primary, guardandoStock && { opacity: 0.6 }]}
                 >
-                  <Text style={s.primaryText}>Confirmar</Text>
+                  <Text style={s.primaryText}>
+                    {guardandoStock ? "Guardando..." : "Confirmar"}
+                  </Text>
                 </Pressable>
+
                 <Pressable
                   accessibilityRole="button"
+                  disabled={guardandoStock}
                   onPress={close}
                   style={s.secondary}
                 >
@@ -378,7 +556,11 @@ const baseStyles = StyleSheet.create({
     paddingBottom: 32,
     gap: 16,
   },
-  back: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
+  back: {
+    minHeight: 44,
+    justifyContent: "center",
+    alignSelf: "flex-start",
+  },
   eyebrow: {
     color: "#796763",
     fontSize: 11,
@@ -386,7 +568,12 @@ const baseStyles = StyleSheet.create({
     letterSpacing: 1,
   },
   title: { fontSize: 30, fontWeight: "700", color: "#1B1B1C" },
-  subtitle: { fontSize: 15, lineHeight: 22, color: "#5D3F3B", marginBottom: 8 },
+  subtitle: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: "#5D3F3B",
+    marginBottom: 8,
+  },
   card: {
     padding: 20,
     borderRadius: 16,
@@ -395,14 +582,22 @@ const baseStyles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     gap: 14,
   },
-  sectionTitle: { fontSize: 19, fontWeight: "700", color: "#1B1B1C" },
+  sectionTitle: {
+    fontSize: 19,
+    fontWeight: "700",
+    color: "#1B1B1C",
+  },
   label: {
     fontSize: 12,
     fontWeight: "600",
     color: "#5D3F3B",
     letterSpacing: 0.5,
   },
-  productName: { fontSize: 22, fontWeight: "600", color: "#1B1B1C" },
+  productName: {
+    fontSize: 22,
+    fontWeight: "600",
+    color: "#1B1B1C",
+  },
   muted: { color: "#5D3F3B", fontSize: 13, lineHeight: 20 },
   inputRow: {
     flexDirection: "row",
@@ -456,7 +651,6 @@ const baseStyles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   link: { color: RED, fontSize: 15, fontWeight: "600" },
-  notice: { padding: 16, backgroundColor: "#F0EDED", borderRadius: 12 },
   overlay: { flex: 1, backgroundColor: "rgba(27,27,28,0.45)" },
   modalScroll: { flexGrow: 1, justifyContent: "center", padding: 20 },
   modalCard: {

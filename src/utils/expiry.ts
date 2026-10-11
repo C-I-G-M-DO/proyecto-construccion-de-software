@@ -52,8 +52,9 @@ export function expiryAlerts(
       alerts.push({
         id: `${product._id}/${lot._id ?? index}`,
         productoId: product._id,
+        loteId: lot._id,
         nombre: product.nombre,
-        imagen: product.imagen,
+        imagen: product.imagen ?? undefined,
         cantidad: lot.cantidadDisponible,
         unidadStock: product.unidadStock ?? "unidad",
         fechaVencimiento,

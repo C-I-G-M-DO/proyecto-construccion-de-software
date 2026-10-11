@@ -1,12 +1,15 @@
 import { nombreMedida } from "@/constants/measures";
 import { useProducts } from "@/context/product_context";
 import { useSurtioTheme } from "@/hooks/use-surtio-theme";
-import { despacharOrden, obtenerOrdenesPendientes } from "@/services/orders";
+import {
+  despacharOrden,
+  eliminarOrden,
+  obtenerOrdenesPendientes,
+} from "@/services/orders";
 import type { MetodoPago, Orden } from "@/types/orders";
 import { formatMoney as money } from "@/utils/currency";
 
 import { useFocusEffect } from "expo-router";
-
 import { useCallback, useRef, useState } from "react";
 
 import {
@@ -22,6 +25,8 @@ import {
   View,
 } from "react-native";
 
+import { Swipeable } from "react-native-gesture-handler";
+
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -31,41 +36,23 @@ const METODOS: {
   value: MetodoPago;
   label: string;
 }[] = [
-  {
-    value: "efectivo",
-    label: "Efectivo",
-  },
-  {
-    value: "tarjeta",
-    label: "Tarjeta",
-  },
-  {
-    value: "transferencia",
-    label: "Transferencia",
-  },
-  {
-    value: "mixto",
-    label: "Mixto",
-  },
+  { value: "efectivo", label: "Efectivo" },
+  { value: "tarjeta", label: "Tarjeta" },
+  { value: "transferencia", label: "Transferencia" },
+  { value: "mixto", label: "Mixto" },
 ];
 
 export default function DispatchScreen() {
   const t = useSurtioTheme();
-
   const insets = useSafeAreaInsets();
-
   const { obtenerProductos } = useProducts();
 
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
-
   const [seleccionada, setSeleccionada] = useState<Orden | null>(null);
-
   const [loading, setLoading] = useState(true);
-
   const [sending, setSending] = useState(false);
-
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
   const [metodoPago, setMetodoPago] = useState<MetodoPago>("efectivo");
 
   const controller = useRef<AbortController | null>(null);
@@ -78,7 +65,6 @@ export default function DispatchScreen() {
     controller.current?.abort();
 
     const request = new AbortController();
-
     controller.current = request;
 
     if (!silent) {
@@ -94,8 +80,6 @@ export default function DispatchScreen() {
       }
     } catch (cause) {
       if (!request.signal.aborted) {
-        setOrdenes([]);
-
         setError(
           cause instanceof Error
             ? cause.message
@@ -130,14 +114,110 @@ export default function DispatchScreen() {
     }, [cargar]),
   );
 
+  // =========================================================
+  // ELIMINAR ORDEN PENDIENTE
+  // =========================================================
+
+  const confirmarEliminacion = useCallback(
+    (orden: Orden) => {
+      if (deletingId || sending) {
+        return;
+      }
+
+      const mensaje =
+        `¿Quieres eliminar la orden #${orden.numeroOrden}?\n\n` +
+        "Esta acción eliminará el pedido pendiente. " +
+        "No registrará una venta ni descontará inventario.";
+
+      const ejecutar = async () => {
+        if (deletingId || sending) {
+          return;
+        }
+
+        setDeletingId(orden._id);
+
+        try {
+          await eliminarOrden(orden._id);
+
+          // Retirarla inmediatamente de la lista.
+          setOrdenes((actuales) =>
+            actuales.filter((item) => item._id !== orden._id),
+          );
+
+          // Si estaba abierta en el modal, cerrarlo.
+          setSeleccionada((actual) =>
+            actual?._id === orden._id ? null : actual,
+          );
+
+          setError(null);
+
+          if (Platform.OS === "web") {
+            window.alert(
+              `La orden #${orden.numeroOrden} fue eliminada correctamente.`,
+            );
+          } else {
+            Alert.alert(
+              "Orden eliminada",
+              `La orden #${orden.numeroOrden} fue eliminada correctamente.`,
+            );
+          }
+
+          // Sincronizar con el servidor.
+          await cargar();
+        } catch (cause) {
+          const detalle =
+            cause instanceof Error ? cause.message : "Inténtalo nuevamente.";
+
+          if (Platform.OS === "web") {
+            window.alert(`No se pudo eliminar la orden.\n\n${detalle}`);
+          } else {
+            Alert.alert("No se pudo eliminar", detalle);
+          }
+
+          // Consultar el estado real de la orden.
+          void cargar();
+        } finally {
+          setDeletingId(null);
+        }
+      };
+
+      if (Platform.OS === "web") {
+        if (window.confirm(mensaje)) {
+          void ejecutar();
+        }
+      } else {
+        Alert.alert("Eliminar orden", mensaje, [
+          {
+            text: "Cancelar",
+            style: "cancel",
+          },
+          {
+            text: "Eliminar",
+            style: "destructive",
+            onPress: () => {
+              void ejecutar();
+            },
+          },
+        ]);
+      }
+    },
+    [cargar, deletingId, sending],
+  );
+
+  // =========================================================
+  // DESPACHAR ORDEN
+  // =========================================================
+
   const confirmar = () => {
-    if (!seleccionada || sending) {
+    if (!seleccionada || sending || deletingId) {
       return;
     }
 
+    const orden = seleccionada;
+
     const mensaje =
-      `Se registrará la venta de la orden #${seleccionada.numeroOrden}.\n\n` +
-      `Inventario: se descontará al confirmar.\n` +
+      `Se registrará la venta de la orden #${orden.numeroOrden}.\n\n` +
+      "Inventario: se descontará al confirmar.\n" +
       `Método de pago: ${
         METODOS.find((item) => item.value === metodoPago)?.label
       }.`;
@@ -146,24 +226,11 @@ export default function DispatchScreen() {
       setSending(true);
 
       try {
-        /*
-         * IMPORTANTE:
-         *
-         * La orden ya contiene:
-         * - clienteId
-         * - clienteNombre
-         * - telefonoCliente
-         * - puntosCanjeados
-         *
-         * Por eso, al despachar solamente enviamos
-         * el método de pago.
-         */
-        const resultado = await despacharOrden(seleccionada._id, {
+        const resultado = await despacharOrden(orden._id, {
           metodoPago,
         });
 
         setSeleccionada(null);
-
         setMetodoPago("efectivo");
 
         await Promise.all([cargar(), obtenerProductos()]);
@@ -193,10 +260,6 @@ export default function DispatchScreen() {
           Alert.alert("No se pudo despachar", detalle);
         }
 
-        /*
-         * Volvemos a consultar por si otro empleado
-         * ya despachó la orden o cambió el stock.
-         */
         void cargar();
       } finally {
         setSending(false);
@@ -232,6 +295,58 @@ export default function DispatchScreen() {
     gap: 9,
   } as const;
 
+  // =========================================================
+  // ACCIÓN QUE APARECE AL DESLIZAR HACIA LA IZQUIERDA
+  // =========================================================
+
+  const renderRightActions = (orden: Orden) => {
+    const eliminando = deletingId === orden._id;
+
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Eliminar orden ${orden.numeroOrden}`}
+        disabled={!!deletingId || sending}
+        onPress={() => confirmarEliminacion(orden)}
+        style={{
+          backgroundColor: "#DC2626",
+          borderRadius: 14,
+          marginBottom: 2,
+          marginLeft: 10,
+          width: 104,
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: deletingId || sending ? 0.6 : 1,
+        }}
+      >
+        {eliminando ? (
+          <ActivityIndicator color="#FFFFFF" />
+        ) : (
+          <>
+            <Text
+              style={{
+                fontSize: 23,
+                color: "#FFFFFF",
+              }}
+            >
+              🗑
+            </Text>
+
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontWeight: "800",
+                marginTop: 5,
+              }}
+            >
+              Eliminar
+            </Text>
+          </>
+        )}
+      </Pressable>
+    );
+  };
+
   return (
     <SafeAreaView
       style={{
@@ -243,9 +358,7 @@ export default function DispatchScreen() {
       <FlatList
         data={ordenes}
         keyExtractor={(item) => item._id}
-        style={{
-          flex: 1,
-        }}
+        style={{ flex: 1 }}
         contentContainerStyle={{
           padding: 20,
           paddingTop: insets.top + 16,
@@ -261,12 +374,7 @@ export default function DispatchScreen() {
           void cargar();
         }}
         ListHeaderComponent={
-          <View
-            style={{
-              gap: 10,
-              marginBottom: 12,
-            }}
-          >
+          <View style={{ gap: 10, marginBottom: 12 }}>
             <Text
               style={{
                 color: t.text,
@@ -284,23 +392,15 @@ export default function DispatchScreen() {
               }}
             >
               Órdenes pendientes de preparar. La lista se actualiza cada 10
-              segundos.
+              segundos. Desliza una orden hacia la izquierda para eliminarla.
             </Text>
 
             {error && (
               <View style={card}>
-                <Text
-                  style={{
-                    color: t.text,
-                  }}
-                >
-                  {error}
-                </Text>
+                <Text style={{ color: t.text }}>{error}</Text>
 
                 <Pressable
-                  onPress={() => {
-                    void cargar();
-                  }}
+                  onPress={() => void cargar()}
                   style={{
                     minHeight: 44,
                     justifyContent: "center",
@@ -333,11 +433,7 @@ export default function DispatchScreen() {
               {loading ? (
                 <ActivityIndicator color={t.primary} />
               ) : (
-                <Text
-                  style={{
-                    color: t.secondary,
-                  }}
-                >
+                <Text style={{ color: t.secondary }}>
                   No hay órdenes pendientes.
                 </Text>
               )}
@@ -345,21 +441,69 @@ export default function DispatchScreen() {
           ) : null
         }
         renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              setSeleccionada(item);
-              setMetodoPago("efectivo");
-            }}
-            style={card}
+          <Swipeable
+            key={item._id}
+            renderRightActions={() => renderRightActions(item)}
+            overshootRight={false}
+            enabled={!deletingId && !sending}
           >
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                gap: 12,
+            <Pressable
+              accessibilityRole="button"
+              disabled={!!deletingId || sending}
+              onPress={() => {
+                setSeleccionada(item);
+                setMetodoPago("efectivo");
               }}
+              style={card}
             >
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    color: t.text,
+                    fontSize: 18,
+                    fontWeight: "700",
+                  }}
+                >
+                  Orden #{item.numeroOrden}
+                </Text>
+
+                <Text
+                  style={{
+                    color: t.primary,
+                    fontWeight: "700",
+                  }}
+                >
+                  Pendiente
+                </Text>
+              </View>
+
+              <Text style={{ color: t.secondary }}>
+                {new Date(item.createdAt).toLocaleString("es-DO")}
+                {item.createdByName ? ` · ${item.createdByName}` : ""}
+              </Text>
+
+              {item.clienteNombre && (
+                <Text
+                  style={{
+                    color: t.text,
+                    fontWeight: "600",
+                  }}
+                >
+                  👤 {item.clienteNombre}
+                  {item.telefonoCliente ? ` · ${item.telefonoCliente}` : ""}
+                </Text>
+              )}
+
+              <Text style={{ color: t.secondary }}>
+                {item.items?.length ?? 0} productos · Toca para ver detalles
+              </Text>
+
               <Text
                 style={{
                   color: t.text,
@@ -367,68 +511,32 @@ export default function DispatchScreen() {
                   fontWeight: "700",
                 }}
               >
-                Orden #{item.numeroOrden}
+                {money(item.subtotal)}
               </Text>
 
               <Text
                 style={{
-                  color: t.primary,
-                  fontWeight: "700",
+                  color: t.secondary,
+                  fontSize: 12,
                 }}
               >
-                Pendiente
+                Desliza a la izquierda para eliminar
               </Text>
-            </View>
-
-            <Text
-              style={{
-                color: t.secondary,
-              }}
-            >
-              {new Date(item.createdAt).toLocaleString("es-DO")}
-
-              {item.createdByName ? ` · ${item.createdByName}` : ""}
-            </Text>
-
-            {item.clienteNombre && (
-              <Text
-                style={{
-                  color: t.text,
-                  fontWeight: "600",
-                }}
-              >
-                👤 {item.clienteNombre}
-                {item.telefonoCliente ? ` · ${item.telefonoCliente}` : ""}
-              </Text>
-            )}
-
-            <Text
-              style={{
-                color: t.secondary,
-              }}
-            >
-              {item.items?.length ?? 0} productos · Toca para ver detalles
-            </Text>
-
-            <Text
-              style={{
-                color: t.text,
-                fontSize: 18,
-                fontWeight: "700",
-              }}
-            >
-              {money(item.subtotal)}
-            </Text>
-          </Pressable>
+            </Pressable>
+          </Swipeable>
         )}
       />
+
+      {/* =====================================================
+          DETALLES Y DESPACHO
+      ====================================================== */}
 
       <Modal
         visible={!!seleccionada}
         transparent
         animationType="slide"
         onRequestClose={() => {
-          if (!sending) {
+          if (!sending && !deletingId) {
             setSeleccionada(null);
           }
         }}
@@ -463,14 +571,9 @@ export default function DispatchScreen() {
               Orden #{seleccionada?.numeroOrden}
             </Text>
 
-            <Text
-              style={{
-                color: t.secondary,
-              }}
-            >
+            <Text style={{ color: t.secondary }}>
               {seleccionada &&
                 new Date(seleccionada.createdAt).toLocaleString("es-DO")}
-
               {seleccionada?.createdByName
                 ? ` · ${seleccionada.createdByName}`
                 : ""}
@@ -497,20 +600,12 @@ export default function DispatchScreen() {
                   Cliente
                 </Text>
 
-                <Text
-                  style={{
-                    color: t.text,
-                  }}
-                >
+                <Text style={{ color: t.text }}>
                   {seleccionada.clienteNombre}
                 </Text>
 
                 {seleccionada.telefonoCliente && (
-                  <Text
-                    style={{
-                      color: t.secondary,
-                    }}
-                  >
+                  <Text style={{ color: t.secondary }}>
                     📱 {seleccionada.telefonoCliente}
                   </Text>
                 )}
@@ -529,12 +624,8 @@ export default function DispatchScreen() {
             )}
 
             <ScrollView
-              style={{
-                flexGrow: 0,
-              }}
-              contentContainerStyle={{
-                gap: 12,
-              }}
+              style={{ flexGrow: 0 }}
+              contentContainerStyle={{ gap: 12 }}
             >
               {seleccionada?.items?.map((item, index) => (
                 <View
@@ -555,22 +646,12 @@ export default function DispatchScreen() {
                     {item.nombre}
                   </Text>
 
-                  <Text
-                    style={{
-                      color: t.secondary,
-                    }}
-                  >
+                  <Text style={{ color: t.secondary }}>
                     {item.cantidad} × {nombreMedida(item.tipo)} ·{" "}
                     {money(item.precio)}
                   </Text>
 
-                  <Text
-                    style={{
-                      color: t.text,
-                    }}
-                  >
-                    {money(item.total)}
-                  </Text>
+                  <Text style={{ color: t.text }}>{money(item.total)}</Text>
                 </View>
               ))}
             </ScrollView>
@@ -587,11 +668,7 @@ export default function DispatchScreen() {
 
             {/* MÉTODO DE PAGO */}
 
-            <View
-              style={{
-                gap: 8,
-              }}
-            >
+            <View style={{ gap: 8 }}>
               <Text
                 style={{
                   color: t.text,
@@ -615,7 +692,7 @@ export default function DispatchScreen() {
                   return (
                     <Pressable
                       key={metodo.value}
-                      disabled={sending}
+                      disabled={sending || !!deletingId}
                       onPress={() => setMetodoPago(metodo.value)}
                       style={{
                         paddingHorizontal: 14,
@@ -641,11 +718,11 @@ export default function DispatchScreen() {
             </View>
 
             <Pressable
-              disabled={sending}
+              disabled={sending || !!deletingId}
               onPress={confirmar}
               style={{
                 backgroundColor: t.button,
-                opacity: sending ? 0.6 : 1,
+                opacity: sending || deletingId ? 0.6 : 1,
                 minHeight: 52,
                 borderRadius: 12,
                 alignItems: "center",
@@ -662,8 +739,41 @@ export default function DispatchScreen() {
               </Text>
             </Pressable>
 
+            {/* ELIMINAR DESDE LOS DETALLES */}
+
             <Pressable
-              disabled={sending}
+              disabled={sending || !!deletingId}
+              onPress={() => {
+                if (seleccionada) {
+                  confirmarEliminacion(seleccionada);
+                }
+              }}
+              style={{
+                minHeight: 46,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "#DC2626",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: sending || deletingId ? 0.6 : 1,
+              }}
+            >
+              {deletingId === seleccionada?._id ? (
+                <ActivityIndicator color="#DC2626" />
+              ) : (
+                <Text
+                  style={{
+                    color: "#DC2626",
+                    fontWeight: "800",
+                  }}
+                >
+                  🗑 Eliminar pedido pendiente
+                </Text>
+              )}
+            </Pressable>
+
+            <Pressable
+              disabled={sending || !!deletingId}
               onPress={() => setSeleccionada(null)}
               style={{
                 minHeight: 44,
@@ -671,13 +781,7 @@ export default function DispatchScreen() {
                 justifyContent: "center",
               }}
             >
-              <Text
-                style={{
-                  color: t.primary,
-                }}
-              >
-                Cerrar
-              </Text>
+              <Text style={{ color: t.primary }}>Cerrar</Text>
             </Pressable>
           </View>
         </SafeAreaView>

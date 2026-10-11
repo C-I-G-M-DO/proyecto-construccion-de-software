@@ -1,9 +1,9 @@
+import { consumoEnStock, TipoMedida } from "@/constants/measures";
+import { applyStoredCategories } from "@/services/product-categories";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { createContext, useContext, useState } from "react";
 import { Precio, Producto } from "../types/products";
-import { consumoEnStock, TipoMedida } from '@/constants/measures';
-import { applyStoredCategories } from '@/services/product-categories';
 
 type ProductContextType = {
   productos: Producto[];
@@ -15,9 +15,16 @@ type ProductContextType = {
     cantidad: number,
     tipo: TipoMedida,
     equivalencia?: number,
+    fechaVencimiento?: string,
   ) => Promise<void>;
   eliminarProducto: (productoId: string) => Promise<void>;
   actualizarPrecios: (productoId: string, precios: Precio[]) => Promise<void>;
+  retirarLoteVencido: (
+    productoId: string,
+    loteId: string,
+    cantidad: number,
+    motivo: string,
+  ) => Promise<void>;
 };
 
 export const ProductContext = createContext<ProductContextType | undefined>(
@@ -33,7 +40,8 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
 
   //  FETCH CON AUTH AUTOMÁTICO
   const fetchWithAuth = async (url: string, options: any = {}) => {
-    if (!API_URL) throw new Error("Falta EXPO_PUBLIC_API_URL en el archivo .env");
+    if (!API_URL)
+      throw new Error("Falta EXPO_PUBLIC_API_URL en el archivo .env");
     const token = await AsyncStorage.getItem("token");
 
     const res = await fetch(url, {
@@ -75,6 +83,33 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.log("Error cargando productos:", error);
     }
+  };
+
+  //Retirar lote Vencido
+
+  const retirarLoteVencido = async (
+    productoId: string,
+    loteId: string,
+    cantidad: number,
+    motivo: string,
+  ): Promise<void> => {
+    const res = await fetchWithAuth(
+      `${API_URL}/api/products/${productoId}/lotes/${loteId}/retirar-vencido`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ cantidad, motivo }),
+      },
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data?.message || "No se pudo retirar el lote vencido.");
+    }
+
+    setProductos((prev) =>
+      prev.map((producto) => (producto._id === productoId ? data : producto)),
+    );
   };
 
   //  AGREGAR PRODUCTO
@@ -168,43 +203,71 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   };
 
   // REPONER STOCK
+
   const reponerStock = async (
     productoId: string,
     cantidad: number,
     tipo: TipoMedida,
     equivalencia?: number,
-  ) => {
+    fechaVencimiento?: string,
+  ): Promise<void> => {
     try {
-      const producto = productos.find(item => item._id === productoId);
-      const precio = producto?.precios?.find(p => p.tipo === tipo);
-      const factor = consumoEnStock(tipo, equivalencia ?? precio?.equivalencia, producto?.unidadStock);
-      if (!Number.isFinite(factor) || factor <= 0) throw new Error('Presentación incompatible con el stock.');
+      const producto = productos.find((item) => item._id === productoId);
+
+      if (!producto) {
+        throw new Error("No se encontró el producto.");
+      }
+
+      if (producto.vence && !fechaVencimiento) {
+        throw new Error(
+          "Debes indicar la fecha de vencimiento del lote nuevo.",
+        );
+      }
+
+      const precio = producto.precios?.find((p) => p.tipo === tipo);
+
+      const factor = consumoEnStock(
+        tipo,
+        equivalencia ?? precio?.equivalencia,
+        producto.unidadStock,
+      );
+
+      if (!Number.isFinite(factor) || factor <= 0) {
+        throw new Error("Presentación incompatible con el stock.");
+      }
+
       const cantidadAgregar = cantidad * factor;
+
+      const body: {
+        cantidad: number;
+        fechaVencimiento?: string;
+      } = {
+        cantidad: cantidadAgregar,
+      };
+
+      if (producto.vence && fechaVencimiento) {
+        body.fechaVencimiento = fechaVencimiento;
+      }
 
       const res = await fetchWithAuth(
         `${API_URL}/api/products/${productoId}/stock`,
         {
           method: "PATCH",
-          body: JSON.stringify({
-            cantidad: cantidadAgregar,
-          }),
+          body: JSON.stringify(body),
         },
       );
 
       const data = await res.json();
 
       if (!res.ok) {
-        console.log("Error actualizando stock:", data);
-
-        throw new Error(data?.message || "No se pudo actualizar el stock");
+        throw new Error(data?.message || "No se pudo actualizar el stock.");
       }
 
-      // Reemplazar el producto local por el actualizado desde MongoDB
       setProductos((prev) =>
-        prev.map((producto) => (producto._id === productoId ? data : producto)),
+        prev.map((p) => (p._id === productoId ? data : p)),
       );
     } catch (error) {
-      console.log("Error reponiendo stock:", error);
+      console.error("Error reponiendo stock:", error);
       throw error;
     }
   };
@@ -219,6 +282,7 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         reponerStock,
         eliminarProducto,
         actualizarPrecios,
+        retirarLoteVencido,
       }}
     >
       {children}

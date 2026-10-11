@@ -1,34 +1,60 @@
+import type { TipoMedida, UnidadStock } from "@/constants/measures";
 
+export type Precio = {
+  tipo: TipoMedida;
+  valor: number;
+  equivalencia?: number;
+};
 
-import type { TipoMedida, UnidadStock } from '@/constants/measures';
+export type LoteProducto = {
+  _id?: string;
+  cantidadInicial?: number;
+  cantidadDisponible: number;
+  fechaVencimiento: string;
+};
+
+export type LoteInicial = {
+  cantidad: number;
+  fechaVencimiento: string;
+};
+
+export type HistorialRetirada = {
+  _id?: string;
+  loteId: string;
+  cantidad: number;
+  fechaRetirada: string;
+  fechaVencimiento: string;
+  motivo: string;
+};
 
 export type Producto = {
   _id: string;
   nombre: string;
-  precios: Precio[]; //  array
+  precios: Precio[];
   stock: number;
   equivalenciaPaquete?: number;
-  imagen: string;
+  imagen: string | null;
   unidadStock?: UnidadStock;
-  /** API field when supported; otherwise an account-local category choice. */
   categoria?: string;
-  /** Optional API integration: only remaining stock in each dated lot. */
+
+  // Control de vencimientos
+  vence?: boolean;
   lotes?: LoteProducto[];
+
+  // Registro histórico de productos retirados
+  historialRetiradas?: HistorialRetirada[];
 };
 
-export type LoteProducto = { _id?: string; cantidadDisponible: number; fechaVencimiento: string };
-export type LoteInicial = { cantidad: number; fechaVencimiento: string };
-export type NuevoProductoPayload = Pick<Producto, 'nombre' | 'precios' | 'stock' | 'unidadStock' | 'imagen'> & { lotesIniciales?: LoteInicial[] };
-
- export type Precio = {
-  tipo: TipoMedida;
-  valor: number;
-  equivalencia?: number; // 👈 SOLO para paquetes
+export type NuevoProductoPayload = Pick<
+  Producto,
+  "nombre" | "precios" | "stock" | "unidadStock" | "imagen"
+> & {
+  lotesIniciales?: LoteInicial[];
 };
 
 export type CartItem = {
-  id: string; // id del item en carrito
-  productoId: string; // 🔥 id REAL del producto
+  id: string;
+  productoId: string;
   nombre: string;
   tipo: TipoMedida;
   precio: number;
