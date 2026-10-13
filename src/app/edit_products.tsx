@@ -45,6 +45,7 @@ export default function EditProductScreen() {
     reponerStock,
     eliminarProducto,
     actualizarPrecios,
+    actualizarStockMinimo,
   } = useProducts();
 
   const producto = productos.find((item) => item._id === params.id);
@@ -61,7 +62,7 @@ export default function EditProductScreen() {
         const parsed = JSON.parse(params.precios ?? "[]");
         if (Array.isArray(parsed)) source = parsed;
       } catch {
-        // Mantener el formulario vacío si los datos de ruta no son válidos.
+        // Mantener el formulario vacío si los datos no son válidos.
       }
     }
 
@@ -71,7 +72,14 @@ export default function EditProductScreen() {
     }));
   });
 
+  const [stockMinimoInput, setStockMinimoInput] = useState(
+    producto?.stockMinimo != null ? String(producto.stockMinimo) : "",
+  );
+
+  const [guardandoMinimo, setGuardandoMinimo] = useState(false);
+
   const [modal, setModal] = useState<"stock" | "delete" | null>(null);
+
   const [cantidadStock, setCantidadStock] = useState("");
   const [fechaVencimiento, setFechaVencimiento] = useState("");
   const [password, setPassword] = useState("");
@@ -90,6 +98,7 @@ export default function EditProductScreen() {
   const back = () =>
     router.canGoBack() ? router.back() : router.replace("/home");
 
+  // GUARDAR PRECIOS Y CATEGORÍA
   async function guardarCambios() {
     if (
       precios.some(
@@ -111,7 +120,6 @@ export default function EditProductScreen() {
         ({ input, equivalencia, ...price }) => ({
           ...price,
           valor: money(input),
-
           ...(price.tipo === "paquete" &&
           equivalencia !== undefined &&
           equivalencia !== null
@@ -139,18 +147,72 @@ export default function EditProductScreen() {
       }
 
       Alert.alert(
-        "Precios actualizados",
-        "Los precios se guardaron correctamente.",
+        "Cambios guardados",
+        "Los precios y la categoría se guardaron correctamente.",
         [{ text: "OK", onPress: back }],
       );
-    } catch {
+    } catch (error) {
       Alert.alert(
         "Error",
-        "No se pudieron guardar los precios. Intenta nuevamente.",
+        error instanceof Error
+          ? error.message
+          : "No se pudieron guardar los precios. Intenta nuevamente.",
       );
     }
   }
 
+  // GUARDAR STOCK MÍNIMO
+  async function guardarStockMinimo() {
+    if (guardandoMinimo) return;
+
+    const texto = stockMinimoInput.trim();
+    let minimo: number | null = null;
+
+    // Un campo vacío desactiva la alerta de stock bajo.
+    if (texto !== "") {
+      minimo = money(texto);
+
+      if (!Number.isFinite(minimo) || minimo < 0) {
+        Alert.alert(
+          "Stock mínimo inválido",
+          "Introduce un número igual o mayor que cero, o deja el campo vacío para desactivar la alerta.",
+        );
+        return;
+      }
+
+      if (producto?.unidadStock === "unidad" && !Number.isInteger(minimo)) {
+        Alert.alert(
+          "Cantidad inválida",
+          "Para productos por unidad, el stock mínimo debe ser un número entero.",
+        );
+        return;
+      }
+    }
+
+    setGuardandoMinimo(true);
+
+    try {
+      await actualizarStockMinimo(params.id, minimo);
+
+      Alert.alert(
+        "Stock mínimo actualizado",
+        minimo === null
+          ? "Se desactivó la alerta de stock bajo para este producto."
+          : `La alerta se activará cuando las existencias sean iguales o inferiores a ${minimo}.`,
+      );
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        error instanceof Error
+          ? error.message
+          : "No se pudo guardar el stock mínimo.",
+      );
+    } finally {
+      setGuardandoMinimo(false);
+    }
+  }
+
+  // VALIDAR FECHA DE VENCIMIENTO
   function validarFechaVencimiento(fechaTexto: string): boolean {
     const fecha = fechaTexto.trim();
 
@@ -189,6 +251,7 @@ export default function EditProductScreen() {
     return true;
   }
 
+  // REPONER STOCK
   async function confirmarStock() {
     if (guardandoStock) return;
 
@@ -249,6 +312,7 @@ export default function EditProductScreen() {
     }
   }
 
+  // ELIMINAR PRODUCTO
   async function confirmarEliminacion() {
     if (password !== "1234") {
       Alert.alert("Contraseña incorrecta");
@@ -300,9 +364,10 @@ export default function EditProductScreen() {
           <Text style={s.eyebrow}>INVENTARIO / PRODUCTO</Text>
           <Text style={s.title}>Editar producto</Text>
           <Text style={s.subtitle}>
-            Consulta sus datos y ajusta los precios.
+            Consulta sus datos y ajusta los precios y el stock mínimo.
           </Text>
 
+          {/* INFORMACIÓN DEL PRODUCTO */}
           <View style={s.card}>
             <Text style={s.label}>NOMBRE DEL PRODUCTO</Text>
 
@@ -319,6 +384,7 @@ export default function EditProductScreen() {
             </Text>
           </View>
 
+          {/* PRECIOS */}
           <View style={s.card}>
             <Text style={s.sectionTitle}>Precios de venta</Text>
 
@@ -359,6 +425,7 @@ export default function EditProductScreen() {
             )}
           </View>
 
+          {/* EXISTENCIAS Y STOCK MÍNIMO */}
           <View style={s.card}>
             <Text style={s.sectionTitle}>Existencias</Text>
 
@@ -376,6 +443,53 @@ export default function EditProductScreen() {
               </Text>
             )}
 
+            <View
+              style={[s.stockMinimumSection, { borderTopColor: theme.border }]}
+            >
+              <Text style={s.sectionTitle}>Alerta de stock bajo</Text>
+
+              <Text style={s.muted}>
+                Configura el mínimo que deseas mantener. Se generará una alerta
+                cuando el stock disponible sea igual o inferior a esa cantidad.
+              </Text>
+
+              <Text style={s.label}>
+                STOCK MÍNIMO{" "}
+                {producto?.unidadStock === "libra" ? "(LB)" : "(UNIDADES)"}
+              </Text>
+
+              <TextInput
+                accessibilityLabel="Stock mínimo para alertas"
+                value={stockMinimoInput}
+                onChangeText={setStockMinimoInput}
+                keyboardType="decimal-pad"
+                placeholder="Ej. 10"
+                placeholderTextColor="#887571"
+                style={s.input}
+              />
+
+              <Text style={s.muted}>
+                {stockMinimoInput.trim() === ""
+                  ? "Sin mínimo configurado: no se generará esta alerta."
+                  : `Mínimo indicado: ${stockMinimoInput} ${
+                      producto?.unidadStock === "libra" ? "lb" : "unidades"
+                    }`}
+              </Text>
+
+              <Pressable
+                accessibilityRole="button"
+                disabled={guardandoMinimo}
+                onPress={() => void guardarStockMinimo()}
+                style={[s.primary, guardandoMinimo && { opacity: 0.6 }]}
+              >
+                <Text style={s.primaryText}>
+                  {guardandoMinimo
+                    ? "Guardando mínimo..."
+                    : "Guardar stock mínimo"}
+                </Text>
+              </Pressable>
+            </View>
+
             <Pressable
               accessibilityRole="button"
               onPress={() => {
@@ -392,6 +506,7 @@ export default function EditProductScreen() {
             </Pressable>
           </View>
 
+          {/* GUARDAR PRECIOS Y CATEGORÍA */}
           <Pressable
             accessibilityRole="button"
             onPress={() => void guardarCambios()}
@@ -400,6 +515,7 @@ export default function EditProductScreen() {
             <Text style={s.primaryText}>Guardar cambios</Text>
           </Pressable>
 
+          {/* ELIMINAR */}
           <Pressable
             accessibilityRole="button"
             onPress={() => setModal("delete")}
@@ -410,6 +526,7 @@ export default function EditProductScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* MODAL DE REPOSICIÓN Y ELIMINACIÓN */}
       <Modal
         visible={modal !== null}
         transparent
@@ -441,13 +558,7 @@ export default function EditProductScreen() {
                   <>
                     <Text style={s.label}>PRESENTACIÓN</Text>
 
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        flexWrap: "wrap",
-                        gap: 8,
-                      }}
-                    >
+                    <View style={s.measureOptions}>
                       {medidasDisponibles.map(({ tipo }) => (
                         <Pressable
                           key={tipo}
@@ -554,7 +665,10 @@ export default function EditProductScreen() {
 }
 
 const baseStyles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#FCF9F8" },
+  screen: {
+    flex: 1,
+    backgroundColor: "#FCF9F8",
+  },
   content: {
     flexGrow: 1,
     width: "100%",
@@ -575,7 +689,11 @@ const baseStyles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1,
   },
-  title: { fontSize: 30, fontWeight: "700", color: "#1B1B1C" },
+  title: {
+    fontSize: 30,
+    fontWeight: "700",
+    color: "#1B1B1C",
+  },
   subtitle: {
     fontSize: 15,
     lineHeight: 22,
@@ -606,7 +724,11 @@ const baseStyles = StyleSheet.create({
     fontWeight: "600",
     color: "#1B1B1C",
   },
-  muted: { color: "#5D3F3B", fontSize: 13, lineHeight: 20 },
+  muted: {
+    color: "#5D3F3B",
+    fontSize: 13,
+    lineHeight: 20,
+  },
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -615,7 +737,11 @@ const baseStyles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: "#FCF9F8",
   },
-  currency: { color: "#5D3F3B", paddingLeft: 16, fontSize: 16 },
+  currency: {
+    color: "#5D3F3B",
+    paddingLeft: 16,
+    fontSize: 16,
+  },
   priceInput: {
     flex: 1,
     minWidth: 0,
@@ -633,7 +759,17 @@ const baseStyles = StyleSheet.create({
     fontSize: 16,
     color: "#1B1B1C",
   },
-  stock: { color: "#1B1B1C", fontSize: 32, fontWeight: "700" },
+  stock: {
+    color: "#1B1B1C",
+    fontSize: 32,
+    fontWeight: "700",
+  },
+  stockMinimumSection: {
+    marginTop: 8,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    gap: 10,
+  },
   primary: {
     backgroundColor: RED,
     borderRadius: 12,
@@ -658,9 +794,20 @@ const baseStyles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#FFFFFF",
   },
-  link: { color: RED, fontSize: 15, fontWeight: "600" },
-  overlay: { flex: 1, backgroundColor: "rgba(27,27,28,0.45)" },
-  modalScroll: { flexGrow: 1, justifyContent: "center", padding: 20 },
+  link: {
+    color: RED,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(27,27,28,0.45)",
+  },
+  modalScroll: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: 20,
+  },
   modalCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
@@ -669,6 +816,11 @@ const baseStyles = StyleSheet.create({
     width: "100%",
     maxWidth: 460,
     alignSelf: "center",
+  },
+  measureOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   chip: {
     padding: 12,

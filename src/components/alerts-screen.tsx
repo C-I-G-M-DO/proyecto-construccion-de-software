@@ -43,6 +43,12 @@ export default function AlertsScreen() {
 
   const availableProducts = products.filter((product) => product.stock > 0);
 
+  const lowStockProducts = products.filter((product) => {
+    const minimo = Number(product.stockMinimo ?? 0);
+
+    return Number.isFinite(minimo) && minimo > 0 && product.stock <= minimo;
+  });
+
   const datedProducts = new Set(lots.map((lot) => lot.productoId));
 
   const withoutDates = availableProducts.filter(
@@ -109,6 +115,62 @@ export default function AlertsScreen() {
           <BusinessDate />
 
           <NotificationSettings />
+
+          <View style={{ gap: 12 }}>
+            <Text style={s.title}>Alertas de stock bajo</Text>
+
+            <Text style={s.muted}>
+              Productos que necesitan reposición según el mínimo configurado.
+            </Text>
+
+            {lowStockProducts.length === 0 ? (
+              <LoadNotice message="No hay productos con stock bajo configurado." />
+            ) : (
+              lowStockProducts.map((product) => (
+                <View
+                  key={product._id}
+                  style={[
+                    s.card,
+                    {
+                      padding: 16,
+                      gap: 8,
+                      borderWidth: 1,
+                      borderColor: t.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: t.text,
+                      fontSize: 16,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {product.nombre}
+                  </Text>
+
+                  <Text style={s.muted}>
+                    Existencias actuales: {product.stock}{" "}
+                    {product.unidadStock === "libra" ? "lb" : "unidades"}
+                  </Text>
+
+                  <Text style={s.muted}>
+                    Mínimo configurado: {product.stockMinimo}{" "}
+                    {product.unidadStock === "libra" ? "lb" : "unidades"}
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: "#DC2626",
+                      fontWeight: "700",
+                    }}
+                  >
+                    Reposición necesaria
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
 
           <View style={[s.row, { flexWrap: "wrap" }]}>
             {choices.map((choice) => (

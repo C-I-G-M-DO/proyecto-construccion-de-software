@@ -18,14 +18,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { CategoryPicker } from "@/components/product-category-controls";
 import DatePicker from "@/components/ui/date-picker";
-import { MEDIDAS, nombreMedida, UnidadStock } from "@/constants/measures";
+import { MEDIDAS, nombreMedida, type UnidadStock } from "@/constants/measures";
+import type { ProductCategory } from "@/constants/product-categories";
 import { useSurtioTheme } from "@/hooks/use-surtio-theme";
-import { Precio, type NuevoProductoPayload } from "@/types/products";
+import { saveProductCategory } from "@/services/product-categories";
+import type { NuevoProductoPayload, Precio } from "@/types/products";
 import { initialLots } from "@/utils/expiry";
-import { CategoryPicker } from '@/components/product-category-controls';
-import type { ProductCategory } from '@/constants/product-categories';
-import { saveProductCategory } from '@/services/product-categories';
 
 type ProductImage = {
   public_id: string;
@@ -34,18 +34,6 @@ type ProductImage = {
 
 const number = (value: string) => Number(value.replace(",", "."));
 
-/**
- * Palabras que normalmente no ayudan a identificar
- * el producto.
- *
- * Ejemplo:
- *
- * "galleta de soda saltina"
- *
- * se convierte en:
- *
- * ["galleta", "soda", "saltina"]
- */
 const PALABRAS_IGNORADAS = new Set([
   "a",
   "al",
@@ -66,18 +54,6 @@ const PALABRAS_IGNORADAS = new Set([
   "unas",
 ]);
 
-/**
- * Palabras que representan presentaciones,
- * cantidades o unidades y que NO deben utilizarse
- * para decidir si una imagen corresponde al producto.
- *
- * Ejemplo:
- *
- * 36-galleta-de-soda-saltina-hatuey-9-paquetes
- *
- * "9" y "paquetes" no forman parte del nombre
- * real del producto.
- */
 const PALABRAS_PRESENTACION = new Set([
   "unidad",
   "unidades",
@@ -125,17 +101,6 @@ const PALABRAS_PRESENTACION = new Set([
   "g",
 ]);
 
-/**
- * Normaliza un texto para poder comparar nombres.
- *
- * Ejemplos:
- *
- * "Coca Cola"       -> "coca cola"
- * "CÓCA COLA"       -> "coca cola"
- * "coca_cola"       -> "coca cola"
- * "coca-cola"       -> "coca cola"
- * "Leche  Rica"     -> "leche rica"
- */
 function normalizarTexto(texto: string): string {
   return texto
     .toLowerCase()
@@ -147,19 +112,6 @@ function normalizarTexto(texto: string): string {
     .trim();
 }
 
-/**
- * Determina si una palabra representa una cantidad.
- *
- * Reconoce ejemplos como:
- *
- * 9
- * 12
- * 1.5
- * 500
- * 500ml
- * 1.5l
- * 2kg
- */
 function esCantidadONumero(palabra: string): boolean {
   const valor = palabra.replace(",", ".");
 
@@ -174,20 +126,6 @@ function esCantidadONumero(palabra: string): boolean {
   return false;
 }
 
-/**
- * Extrae solamente las palabras importantes de un nombre.
- *
- * Además elimina el número que aparece al principio
- * de las imágenes de Cloudinary.
- *
- * Ejemplo:
- *
- * 36-galleta-de-soda-saltina-hatuey-9-paquetes
- *
- * se convierte aproximadamente en:
- *
- * ["galleta", "soda", "saltina", "hatuey"]
- */
 function palabrasImportantes(texto: string): string[] {
   const normalizado = normalizarTexto(texto);
 
@@ -202,27 +140,22 @@ function palabrasImportantes(texto: string): string[] {
       return false;
     }
 
-    // Número inicial utilizado como ID de la imagen.
     if (index === 0 && /^\d+$/.test(palabra)) {
       return false;
     }
 
-    // Cantidades.
     if (esCantidadONumero(palabra)) {
       return false;
     }
 
-    // Palabras genéricas.
     if (PALABRAS_IGNORADAS.has(palabra)) {
       return false;
     }
 
-    // Presentaciones.
     if (PALABRAS_PRESENTACION.has(palabra)) {
       return false;
     }
 
-    // Números aislados.
     if (/^\d+$/.test(palabra)) {
       return false;
     }
@@ -231,32 +164,15 @@ function palabrasImportantes(texto: string): string[] {
   });
 }
 
-/**
- * Obtiene el nombre real de la imagen desde Cloudinary.
- *
- * Ejemplo:
- *
- * productos/36-galleta-de-soda-saltina-hatuey-9-paquetes
- *
- * devuelve:
- *
- * 36-galleta-de-soda-saltina-hatuey-9-paquetes
- */
 function obtenerNombreImagen(publicId: string): string {
-  const ultimoSegmento =
+  return (
     publicId
       .split("/")
       .pop()
-      ?.replace(/\.[^/.]+$/, "") || "";
-
-  return ultimoSegmento;
+      ?.replace(/\.[^/.]+$/, "") || ""
+  );
 }
 
-/**
- * Calcula qué tan relevante es una imagen para un producto.
- *
- * Mientras mayor sea el número, mejor es la coincidencia.
- */
 function puntuacionImagen(
   nombreProducto: string,
   nombreImagen: string,
@@ -274,32 +190,10 @@ function puntuacionImagen(
   let puntuacion = 0;
   let palabrasEncontradas = 0;
 
-  /**
-   * Coincidencia exacta del nombre completo.
-   *
-   * Ejemplo:
-   *
-   * producto:
-   * galleta soda saltina
-   *
-   * imagen:
-   * galleta soda saltina
-   */
   if (productoNormalizado === imagenNormalizada) {
     puntuacion += 1000;
   }
 
-  /**
-   * La imagen contiene exactamente toda la búsqueda.
-   *
-   * Ejemplo:
-   *
-   * producto:
-   * galleta soda saltina
-   *
-   * imagen:
-   * galleta soda saltina hatuey
-   */
   if (
     imagenNormalizada.includes(productoNormalizado) ||
     productoNormalizado.includes(imagenNormalizada)
@@ -311,31 +205,15 @@ function puntuacionImagen(
     let mejorCoincidencia = 0;
 
     for (const palabraImagen of imagen) {
-      /**
-       * Coincidencia exacta.
-       */
       if (palabraImagen === palabraProducto) {
         mejorCoincidencia = Math.max(mejorCoincidencia, 100);
         continue;
       }
 
-      /**
-       * Coincidencia cuando una palabra contiene
-       * exactamente a la otra.
-       *
-       * Ejemplo:
-       *
-       * coca
-       * cocacola
-       */
       if (
         palabraImagen.includes(palabraProducto) ||
         palabraProducto.includes(palabraImagen)
       ) {
-        /**
-         * Evitamos que coincidencias muy cortas
-         * tengan demasiado peso.
-         */
         if (palabraProducto.length >= 4 && palabraImagen.length >= 4) {
           mejorCoincidencia = Math.max(mejorCoincidencia, 55);
         }
@@ -348,34 +226,14 @@ function puntuacionImagen(
     }
   }
 
-  /**
-   * Bonificación si encontramos todas las palabras
-   * importantes del producto.
-   */
   if (palabrasEncontradas === producto.length) {
     puntuacion += 250;
   } else {
-    /**
-     * Si faltan palabras importantes,
-     * reducimos bastante la puntuación.
-     */
     const porcentaje = palabrasEncontradas / producto.length;
 
     puntuacion += Math.round(porcentaje * 80);
   }
 
-  /**
-   * Penalizamos imágenes que tienen muy pocas
-   * palabras coincidentes respecto al producto.
-   *
-   * Esto ayuda a evitar resultados como:
-   *
-   * "galleta"
-   *
-   * cuando el usuario escribió:
-   *
-   * "galleta soda saltina hatuey"
-   */
   if (
     producto.length >= 2 &&
     palabrasEncontradas < Math.ceil(producto.length / 2)
@@ -386,17 +244,6 @@ function puntuacionImagen(
   return puntuacion;
 }
 
-/**
- * Convierte cualquier fecha recibida a YYYY-MM-DD.
- *
- * Esto permite comparar:
- *
- * 2026-12-15
- *
- * con:
- *
- * 2026-12-15T00:00:00.000Z
- */
 function fechaSoloDia(value: unknown): string | null {
   if (!value) {
     return null;
@@ -408,7 +255,6 @@ function fechaSoloDia(value: unknown): string | null {
     return null;
   }
 
-  // Si ya viene como YYYY-MM-DD
   const match = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
 
   if (match) {
@@ -426,42 +272,35 @@ function fechaSoloDia(value: unknown): string | null {
 
 export default function AddProductScreen() {
   const t = useSurtioTheme();
-
   const router = useRouter();
 
   const [nombre, setNombre] = useState("");
-  const [category, setCategory] = useState<ProductCategory>('otros');
+  const [category, setCategory] = useState<ProductCategory>("otros");
 
   const [precios, setPrecios] = useState<Precio[]>([]);
-
   const [valor, setValor] = useState("");
-
   const [tipo, setTipo] = useState<Precio["tipo"]>("unidad");
 
   const [unidadStock, setUnidadStock] = useState<UnidadStock>("unidad");
 
   const [showMedidas, setShowMedidas] = useState(false);
-
   const [equivalencia, setEquivalencia] = useState("");
 
   const [stock, setStock] = useState("");
 
-  const [vence, setVence] = useState(false);
+  // NUEVO: stock mínimo para generar alertas.
+  const [stockMinimo, setStockMinimo] = useState("");
 
+  const [vence, setVence] = useState(false);
   const [fechaVencimiento, setFechaVencimiento] = useState("");
 
   const [imagen, setImagen] = useState("");
-
   const [imagenes, setImagenes] = useState<ProductImage[]>([]);
-
   const [showImages, setShowImages] = useState(false);
-
   const [imageLoading, setImageLoading] = useState(false);
-
   const [imageError, setImageError] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
-
   const savingRef = useRef(false);
 
   const api = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
@@ -469,17 +308,6 @@ export default function AddProductScreen() {
   const back = () =>
     router.canGoBack() ? router.back() : router.replace("/home");
 
-  /**
-   * Filtra y ordena las imágenes según la relevancia
-   * respecto al nombre del producto.
-   *
-   * Las imágenes tienen nombres como:
-   *
-   * 36-galleta-de-soda-saltina-hatuey-9-paquetes
-   *
-   * Por eso no hacemos simplemente includes().
-   * Calculamos una puntuación para cada imagen.
-   */
   const imagenesFiltradas = (() => {
     const nombreProducto = nombre.trim();
 
@@ -548,7 +376,6 @@ export default function AddProductScreen() {
         "Precio inválido",
         "Escribe un precio igual o mayor que cero.",
       );
-
       return;
     }
 
@@ -564,7 +391,6 @@ export default function AddProductScreen() {
         "Equivalencia inválida",
         "Indica un número entero de unidades por paquete.",
       );
-
       return;
     }
 
@@ -595,7 +421,6 @@ export default function AddProductScreen() {
       }
 
       const res = await fetch(`${api}/api/imagenes`);
-
       const data = await res.json().catch(() => null);
 
       if (!res.ok || !Array.isArray(data)) {
@@ -625,6 +450,11 @@ export default function AddProductScreen() {
 
     const stockNumerico = number(stock);
 
+    // NUEVO: convertir el stock mínimo.
+    // Campo vacío = null = alerta desactivada.
+    const stockMinimoNumerico =
+      stockMinimo.trim() === "" ? null : number(stockMinimo);
+
     if (
       !nombre.trim() ||
       !precios.length ||
@@ -636,7 +466,6 @@ export default function AddProductScreen() {
         "Revisa el formulario",
         "Completa el nombre, agrega al menos un precio e indica existencias iguales o mayores que cero.",
       );
-
       return;
     }
 
@@ -645,7 +474,30 @@ export default function AddProductScreen() {
         "Existencias inválidas",
         "Para productos por unidad, escribe una cantidad entera.",
       );
+      return;
+    }
 
+    // NUEVO: validar el stock mínimo.
+    if (
+      stockMinimoNumerico !== null &&
+      (!Number.isFinite(stockMinimoNumerico) || stockMinimoNumerico < 0)
+    ) {
+      Alert.alert(
+        "Stock mínimo inválido",
+        "Introduce una cantidad igual o mayor que cero, o deja el campo vacío.",
+      );
+      return;
+    }
+
+    if (
+      unidadStock === "unidad" &&
+      stockMinimoNumerico !== null &&
+      !Number.isInteger(stockMinimoNumerico)
+    ) {
+      Alert.alert(
+        "Stock mínimo inválido",
+        "Para productos por unidad, el stock mínimo debe ser un número entero.",
+      );
       return;
     }
 
@@ -654,25 +506,17 @@ export default function AddProductScreen() {
         "Precio sin agregar",
         "Pulsa Agregar precio o borra el precio pendiente antes de guardar.",
       );
-
       return;
     }
 
-    /*
-     * Si el producto vence, la fecha es obligatoria.
-     */
     if (vence && !fechaVencimiento.trim()) {
       Alert.alert(
         "Fecha de vencimiento requerida",
         "Has indicado que este producto vence. Selecciona una fecha de vencimiento antes de guardar.",
       );
-
       return;
     }
 
-    /*
-     * Normalizamos la fecha que viene del DatePicker.
-     */
     const fechaSeleccionada = fechaSoloDia(fechaVencimiento);
 
     if (vence && !fechaSeleccionada) {
@@ -680,7 +524,6 @@ export default function AddProductScreen() {
         "Fecha inválida",
         "La fecha de vencimiento seleccionada no es válida.",
       );
-
       return;
     }
 
@@ -688,9 +531,6 @@ export default function AddProductScreen() {
     setSaving(true);
 
     try {
-      /*
-       * Construimos el lote inicial.
-       */
       const lotesIniciales = initialLots(
         vence,
         fechaVencimiento,
@@ -708,10 +548,12 @@ export default function AddProductScreen() {
         );
       }
 
+      // NUEVO: enviar stockMinimo junto al resto del producto.
       const payload: NuevoProductoPayload = {
         nombre: nombre.trim(),
         precios,
         stock: stockNumerico,
+        stockMinimo: stockMinimoNumerico,
         unidadStock,
         imagen,
         ...(lotesIniciales
@@ -733,12 +575,10 @@ export default function AddProductScreen() {
 
       const res = await fetch(`${api}/api/products`, {
         method: "POST",
-
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-
         body: JSON.stringify(payload),
       });
 
@@ -750,15 +590,16 @@ export default function AddProductScreen() {
 
       const product = data?.producto ?? data;
       let categorySaved = false;
-      if (typeof product?._id === 'string') {
-        try { await saveProductCategory(product._id, category); categorySaved = true; }
-        catch { /* The product was saved; category storage must not retry its creation. */ }
+
+      if (typeof product?._id === "string") {
+        try {
+          await saveProductCategory(product._id, category);
+          categorySaved = true;
+        } catch {
+          // El producto ya está guardado en el backend.
+        }
       }
 
-      /*
-       * Confirmamos la fecha utilizando solamente
-       * YYYY-MM-DD.
-       */
       let expiryConfirmed = !vence;
 
       if (vence) {
@@ -788,29 +629,20 @@ export default function AddProductScreen() {
         );
       }
 
-      /*
-       * Si el producto vence pero el backend no devolvió
-       * el lote correctamente, mostramos el problema.
-       */
       if (vence && !expiryConfirmed) {
         Alert.alert(
           "Producto guardado",
           "El producto se guardó, pero el servidor no confirmó correctamente el lote y su fecha de vencimiento. Revisa el producto antes de continuar.",
-          [
-            {
-              text: "Aceptar",
-            },
-          ],
+          [{ text: "Aceptar" }],
         );
-
         return;
       }
 
       Alert.alert(
         "Producto guardado",
         vence
-          ? `El producto se guardó correctamente con fecha de vencimiento ${fechaSeleccionada}.${categorySaved ? '' : ' No se pudo conservar la categoría en el dispositivo.'}`
-          : `El producto ya forma parte de tu catálogo.${categorySaved ? '' : ' No se pudo conservar la categoría en el dispositivo.'}`,
+          ? `El producto se guardó correctamente con fecha de vencimiento ${fechaSeleccionada}.${categorySaved ? "" : " No se pudo conservar la categoría en el dispositivo."}`
+          : `El producto ya forma parte de tu catálogo.${categorySaved ? "" : " No se pudo conservar la categoría en el dispositivo."}`,
         [
           {
             text: "Aceptar",
@@ -871,9 +703,7 @@ export default function AddProductScreen() {
       }}
     >
       <KeyboardAvoidingView
-        style={{
-          flex: 1,
-        }}
+        style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
@@ -909,11 +739,7 @@ export default function AddProductScreen() {
             </Text>
           </Pressable>
 
-          <View
-            style={{
-              gap: 8,
-            }}
-          >
+          <View style={{ gap: 8 }}>
             <Text
               style={{
                 color: t.text,
@@ -929,6 +755,8 @@ export default function AddProductScreen() {
             </Text>
           </View>
 
+          {/* INFORMACIÓN DEL PRODUCTO */}
+
           <View style={card}>
             <Text style={label}>Información del producto</Text>
 
@@ -942,7 +770,10 @@ export default function AddProductScreen() {
             />
 
             <CategoryPicker value={category} onChange={setCategory} />
-            <Text style={muted}>La categoría se conserva en este dispositivo.</Text>
+
+            <Text style={muted}>
+              La categoría se conserva en este dispositivo.
+            </Text>
 
             <Pressable
               onPress={cargarImagenes}
@@ -990,6 +821,8 @@ export default function AddProductScreen() {
             </Pressable>
           </View>
 
+          {/* PRECIOS DE VENTA */}
+
           <View style={card}>
             <Text style={label}>Precios de venta</Text>
 
@@ -1007,12 +840,7 @@ export default function AddProductScreen() {
               Stock contado en
             </Text>
 
-            <View
-              style={{
-                flexDirection: "row",
-                gap: 8,
-              }}
-            >
+            <View style={{ flexDirection: "row", gap: 8 }}>
               {(["unidad", "libra"] as const).map((value) => (
                 <Pressable
                   key={value}
@@ -1064,13 +892,7 @@ export default function AddProductScreen() {
                 },
               ]}
             >
-              <Text
-                style={{
-                  color: t.text,
-                }}
-              >
-                {nombreMedida(tipo)} ▾
-              </Text>
+              <Text style={{ color: t.text }}>{nombreMedida(tipo)} ▾</Text>
             </Pressable>
 
             <TextInput
@@ -1128,16 +950,8 @@ export default function AddProductScreen() {
                   paddingTop: 10,
                 }}
               >
-                <View
-                  style={{
-                    flex: 1,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: t.text,
-                    }}
-                  >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: t.text }}>
                     {nombreMedida(p.tipo)} · RD$ {p.valor.toFixed(2)}
                   </Text>
 
@@ -1155,21 +969,15 @@ export default function AddProductScreen() {
                       current.filter((price) => price.tipo !== p.tipo),
                     )
                   }
-                  style={{
-                    padding: 12,
-                  }}
+                  style={{ padding: 12 }}
                 >
-                  <Text
-                    style={{
-                      color: t.primary,
-                    }}
-                  >
-                    Quitar
-                  </Text>
+                  <Text style={{ color: t.primary }}>Quitar</Text>
                 </Pressable>
               </View>
             ))}
           </View>
+
+          {/* EXISTENCIAS INICIALES */}
 
           <View style={card}>
             <Text style={label}>Existencias iniciales</Text>
@@ -1190,6 +998,42 @@ export default function AddProductScreen() {
             />
           </View>
 
+          {/* NUEVO: STOCK MÍNIMO */}
+
+          <View style={card}>
+            <Text style={label}>Alerta de stock bajo</Text>
+
+            <Text style={muted}>
+              Define la cantidad mínima que deseas mantener en inventario.
+              Cuando las existencias sean iguales o inferiores a este valor, el
+              producto aparecerá en las alertas.
+            </Text>
+
+            <Text style={label}>
+              Stock mínimo ({unidadStock === "libra" ? "libras" : "unidades"})
+            </Text>
+
+            <TextInput
+              accessibilityLabel="Stock mínimo para alertas"
+              value={stockMinimo}
+              onChangeText={setStockMinimo}
+              keyboardType="decimal-pad"
+              placeholder={unidadStock === "libra" ? "Ej. 2" : "Ej. 5"}
+              placeholderTextColor={t.secondary}
+              style={input}
+            />
+
+            <Text style={muted}>
+              {stockMinimo.trim() === ""
+                ? "Opcional. Déjalo vacío para desactivar la alerta."
+                : `Stock mínimo configurado: ${stockMinimo} ${
+                    unidadStock === "libra" ? "lb" : "unidades"
+                  }`}
+            </Text>
+          </View>
+
+          {/* FECHA DE VENCIMIENTO */}
+
           <View style={card}>
             <View
               style={{
@@ -1198,16 +1042,7 @@ export default function AddProductScreen() {
                 gap: 12,
               }}
             >
-              <Text
-                style={[
-                  label,
-                  {
-                    flex: 1,
-                  },
-                ]}
-              >
-                Este producto vence
-              </Text>
+              <Text style={[label, { flex: 1 }]}>Este producto vence</Text>
 
               <Switch
                 accessibilityLabel="Este producto vence"
@@ -1284,6 +1119,8 @@ export default function AddProductScreen() {
             )}
           </View>
 
+          {/* GUARDAR PRODUCTO */}
+
           <Pressable
             onPress={guardar}
             disabled={saving}
@@ -1342,11 +1179,7 @@ export default function AddProductScreen() {
           >
             <Text style={label}>Seleccionar presentación</Text>
 
-            <ScrollView
-              contentContainerStyle={{
-                gap: 8,
-              }}
-            >
+            <ScrollView contentContainerStyle={{ gap: 8 }}>
               {MEDIDAS.filter((m) => m.unidadStock === unidadStock).map((m) => (
                 <Pressable
                   key={m.tipo}
@@ -1369,13 +1202,7 @@ export default function AddProductScreen() {
                     justifyContent: "center",
                   }}
                 >
-                  <Text
-                    style={{
-                      color: t.text,
-                    }}
-                  >
-                    {m.nombre}
-                  </Text>
+                  <Text style={{ color: t.text }}>{m.nombre}</Text>
                 </Pressable>
               ))}
             </ScrollView>
@@ -1388,13 +1215,7 @@ export default function AddProductScreen() {
                 alignItems: "center",
               }}
             >
-              <Text
-                style={{
-                  color: t.primary,
-                }}
-              >
-                Cancelar
-              </Text>
+              <Text style={{ color: t.primary }}>Cancelar</Text>
             </Pressable>
           </View>
         </SafeAreaView>
@@ -1448,19 +1269,8 @@ export default function AddProductScreen() {
               <>
                 <Text style={muted}>{imageError}</Text>
 
-                <Pressable
-                  onPress={cargarImagenes}
-                  style={{
-                    padding: 12,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: t.primary,
-                    }}
-                  >
-                    Reintentar
-                  </Text>
+                <Pressable onPress={cargarImagenes} style={{ padding: 12 }}>
+                  <Text style={{ color: t.primary }}>Reintentar</Text>
                 </Pressable>
               </>
             ) : (
@@ -1468,9 +1278,7 @@ export default function AddProductScreen() {
                 data={imagenesFiltradas}
                 numColumns={3}
                 keyExtractor={(item) => item.public_id}
-                style={{
-                  flexGrow: 0,
-                }}
+                style={{ flexGrow: 0 }}
                 ListEmptyComponent={
                   !imageLoading ? (
                     <View
@@ -1507,9 +1315,7 @@ export default function AddProductScreen() {
                     }}
                   >
                     <Image
-                      source={{
-                        uri: item.url,
-                      }}
+                      source={{ uri: item.url }}
                       resizeMode="contain"
                       style={{
                         width: "100%",
@@ -1531,13 +1337,7 @@ export default function AddProductScreen() {
                 justifyContent: "center",
               }}
             >
-              <Text
-                style={{
-                  color: t.primary,
-                }}
-              >
-                Cancelar
-              </Text>
+              <Text style={{ color: t.primary }}>Cancelar</Text>
             </Pressable>
           </View>
         </SafeAreaView>

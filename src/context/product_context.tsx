@@ -3,13 +3,17 @@ import { applyStoredCategories } from "@/services/product-categories";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { createContext, useContext, useState } from "react";
-import { Precio, Producto } from "../types/products";
+import type { Precio, Producto } from "../types/products";
 
 type ProductContextType = {
   productos: Producto[];
+
   agregarProducto: (producto: Producto) => Promise<void>;
+
   obtenerProductos: () => Promise<void>;
+
   setProductos: React.Dispatch<React.SetStateAction<Producto[]>>;
+
   reponerStock: (
     productoId: string,
     cantidad: number,
@@ -17,8 +21,16 @@ type ProductContextType = {
     equivalencia?: number,
     fechaVencimiento?: string,
   ) => Promise<void>;
+
   eliminarProducto: (productoId: string) => Promise<void>;
+
   actualizarPrecios: (productoId: string, precios: Precio[]) => Promise<void>;
+
+  actualizarStockMinimo: (
+    productoId: string,
+    stockMinimo: number | null,
+  ) => Promise<void>;
+
   retirarLoteVencido: (
     productoId: string,
     loteId: string,
@@ -35,13 +47,17 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const [productos, setProductos] = useState<Producto[]>([]);
   const router = useRouter();
 
-  //  URL BASE
   const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
-  //  FETCH CON AUTH AUTOMÁTICO
-  const fetchWithAuth = async (url: string, options: any = {}) => {
-    if (!API_URL)
+  // FETCH CON AUTENTICACIÓN
+  const fetchWithAuth = async (
+    url: string,
+    options: RequestInit = {},
+  ): Promise<Response> => {
+    if (!API_URL) {
       throw new Error("Falta EXPO_PUBLIC_API_URL en el archivo .env");
+    }
+
     const token = await AsyncStorage.getItem("token");
 
     const res = await fetch(url, {
@@ -53,69 +69,45 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
       },
     });
 
-    //  TOKEN EXPIRADO → LOGOUT
+    // TOKEN EXPIRADO
     if (res.status === 401) {
-      console.log("Token inválido → cerrando sesión");
+      console.log("Token inválido: cerrando sesión");
 
       await AsyncStorage.removeItem("token");
       await AsyncStorage.removeItem("nombreColmado");
 
       router.replace("/login");
 
-      throw new Error("Unauthorized");
+      throw new Error("Sesión expirada. Inicia sesión nuevamente.");
     }
 
     return res;
   };
 
-  //  OBTENER PRODUCTOS
-  const obtenerProductos = async () => {
+  // OBTENER PRODUCTOS
+  const obtenerProductos = async (): Promise<void> => {
     try {
       const res = await fetchWithAuth(`${API_URL}/api/products`);
+
       const data = await res.json();
 
       if (!res.ok) {
-        console.log("Error obteniendo productos:", data);
-        return;
+        throw new Error(data?.message || "Error obteniendo productos.");
       }
 
-      setProductos(await applyStoredCategories(data));
+      const productosConCategorias = await applyStoredCategories(data);
+
+      setProductos(productosConCategorias);
     } catch (error) {
-      console.log("Error cargando productos:", error);
+      console.error("Error cargando productos:", error);
+      throw error;
     }
   };
 
-  //Retirar lote Vencido
-
-  const retirarLoteVencido = async (
-    productoId: string,
-    loteId: string,
-    cantidad: number,
-    motivo: string,
-  ): Promise<void> => {
-    const res = await fetchWithAuth(
-      `${API_URL}/api/products/${productoId}/lotes/${loteId}/retirar-vencido`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ cantidad, motivo }),
-      },
-    );
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data?.message || "No se pudo retirar el lote vencido.");
-    }
-
-    setProductos((prev) =>
-      prev.map((producto) => (producto._id === productoId ? data : producto)),
-    );
-  };
-
-  //  AGREGAR PRODUCTO
-  const agregarProducto = async (producto: Producto) => {
+  // AGREGAR PRODUCTO
+  const agregarProducto = async (producto: Producto): Promise<void> => {
     try {
-      const res = await fetchWithAuth(`${API_URL}/products`, {
+      const res = await fetchWithAuth(`${API_URL}/api/products`, {
         method: "POST",
         body: JSON.stringify(producto),
       });
@@ -123,18 +115,18 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       if (!res.ok) {
-        console.log("Error creando producto:", data);
-        return;
+        throw new Error(data?.message || "No se pudo crear el producto.");
       }
 
-      //  agregar directamente lo que devuelve Mongo
       setProductos((prev) => [...prev, data]);
     } catch (error) {
-      console.log("Error agregando producto:", error);
+      console.error("Error agregando producto:", error);
+      throw error;
     }
   };
 
-  const eliminarProducto = async (productoId: string) => {
+  // ELIMINAR PRODUCTO
+  const eliminarProducto = async (productoId: string): Promise<void> => {
     try {
       const res = await fetchWithAuth(`${API_URL}/api/products/${productoId}`, {
         method: "DELETE",
@@ -143,24 +135,23 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       if (!res.ok) {
-        console.log("Error eliminando producto:", data);
-
-        throw new Error(data?.message || "No se pudo eliminar el producto");
+        throw new Error(data?.message || "No se pudo eliminar el producto.");
       }
 
-      // Eliminarlo también del estado local
       setProductos((prev) =>
         prev.filter((producto) => producto._id !== productoId),
       );
     } catch (error) {
-      console.log("Error eliminando producto:", error);
+      console.error("Error eliminando producto:", error);
       throw error;
     }
   };
 
-  //Actualizar precio
-
-  const actualizarPrecios = async (productoId: string, precios: Precio[]) => {
+  // ACTUALIZAR PRECIOS
+  const actualizarPrecios = async (
+    productoId: string,
+    precios: Precio[],
+  ): Promise<void> => {
     try {
       const preciosLimpios = precios.map((precio) => ({
         tipo: precio.tipo,
@@ -185,25 +176,81 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       if (!res.ok) {
-        console.log("Error actualizando precios:", data);
-
         throw new Error(
-          data?.message || "No se pudieron actualizar los precios",
+          data?.message || "No se pudieron actualizar los precios.",
         );
       }
 
-      // Actualizar producto local con lo que devolvió MongoDB
       setProductos((prev) =>
         prev.map((producto) => (producto._id === productoId ? data : producto)),
       );
     } catch (error) {
-      console.log("Error actualizando precios:", error);
+      console.error("Error actualizando precios:", error);
+      throw error;
+    }
+  };
+
+  // ACTUALIZAR STOCK MÍNIMO
+  const actualizarStockMinimo = async (
+    productoId: string,
+    stockMinimo: number | null,
+  ): Promise<void> => {
+    try {
+      const productoActual = productos.find(
+        (producto) => producto._id === productoId,
+      );
+
+      if (!productoActual) {
+        throw new Error("No se encontró el producto.");
+      }
+
+      if (
+        stockMinimo !== null &&
+        (!Number.isFinite(stockMinimo) || stockMinimo < 0)
+      ) {
+        throw new Error(
+          "El stock mínimo debe ser un número válido y no negativo.",
+        );
+      }
+
+      if (
+        productoActual.unidadStock === "unidad" &&
+        stockMinimo !== null &&
+        !Number.isInteger(stockMinimo)
+      ) {
+        throw new Error(
+          "El stock mínimo de productos por unidad debe ser entero.",
+        );
+      }
+
+      const res = await fetchWithAuth(
+        `${API_URL}/api/products/${productoId}/stock-minimo`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            stockMinimo,
+          }),
+        },
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          data?.message || "No se pudo actualizar el stock mínimo.",
+        );
+      }
+
+      setProductos((prev) =>
+        prev.map((producto) => (producto._id === productoId ? data : producto)),
+      );
+    } catch (error) {
+      console.error("Error actualizando stock mínimo:", error);
       throw error;
     }
   };
 
   // REPONER STOCK
-
   const reponerStock = async (
     productoId: string,
     cantidad: number,
@@ -237,6 +284,10 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
       }
 
       const cantidadAgregar = cantidad * factor;
+
+      if (!Number.isFinite(cantidadAgregar) || cantidadAgregar <= 0) {
+        throw new Error("La cantidad de reposición debe ser mayor que cero.");
+      }
 
       const body: {
         cantidad: number;
@@ -272,6 +323,40 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // RETIRAR LOTE VENCIDO
+  const retirarLoteVencido = async (
+    productoId: string,
+    loteId: string,
+    cantidad: number,
+    motivo: string,
+  ): Promise<void> => {
+    try {
+      const res = await fetchWithAuth(
+        `${API_URL}/api/products/${productoId}/lotes/${loteId}/retirar-vencido`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            cantidad,
+            motivo,
+          }),
+        },
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.message || "No se pudo retirar el lote vencido.");
+      }
+
+      setProductos((prev) =>
+        prev.map((producto) => (producto._id === productoId ? data : producto)),
+      );
+    } catch (error) {
+      console.error("Error retirando lote vencido:", error);
+      throw error;
+    }
+  };
+
   return (
     <ProductContext.Provider
       value={{
@@ -282,6 +367,7 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         reponerStock,
         eliminarProducto,
         actualizarPrecios,
+        actualizarStockMinimo,
         retirarLoteVencido,
       }}
     >

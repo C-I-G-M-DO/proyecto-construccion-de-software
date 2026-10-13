@@ -36,6 +36,7 @@ export type Producto = {
   imagen: string | null;
   unidadStock?: UnidadStock;
   categoria?: string;
+  stockMinimo?: number;
 
   // Control de vencimientos
   vence?: boolean;
@@ -50,6 +51,7 @@ export type NuevoProductoPayload = Pick<
   "nombre" | "precios" | "stock" | "unidadStock" | "imagen"
 > & {
   lotesIniciales?: LoteInicial[];
+  stockMinimo?: number | null;
 };
 
 export type CartItem = {
